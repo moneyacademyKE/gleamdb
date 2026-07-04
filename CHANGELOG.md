@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.2 - 2026-07-04
+
+### Changed
+
+- Updated GitHub Actions workflows to use Gleam `1.17.0` so autonomous release automation matches the current codebase.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures, no warnings.
+- Release workflow configured with `HEX_API_KEY` for autonomous Hex publishing.
+
 ## 2.4.1 - 2026-07-04
 
 ### Added

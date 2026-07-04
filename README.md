@@ -41,25 +41,16 @@ Add `aarondb` to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "2.4.1"
+aarondb = "2.4.2"
 ```
 
-## Why 2.4.1 Is Better
+## Why 2.4.2 Is Better
 
-AaronDB 2.4.1 completes the last safe reduction of `engine.gleam` after the 2.4.0 redesign.
+AaronDB 2.4.2 verifies the autonomous release pipeline end-to-end.
 
-- `engine.gleam` reduced from 2174 to 296 lines.
-- `transactor.gleam` remains split into runtime, lifecycle, schema, validation, apply, and message helpers.
-- The solver is now split into protocol modules: bindings, stores, triple, positive, and recursive orchestration.
-- The solver dispatch hub is extracted into `engine/solver/core.gleam`.
-- Derived-clause handling is extracted into `engine/solver/derived.gleam`.
-- Vector input parsing is extracted into `engine/solver/vector_input.gleam`.
-- The transactor is now split into domain modules: lifecycle, schema validation, runtime, apply, messages, and constraint validation.
-- Rule derivation, aggregate clauses, and temporal clauses each have their own modules.
-- Direct unit tests now cover extracted solver and transactor modules.
-- CI runs format checks and tests automatically.
-- Benchmarks are separated from the default test suite.
-- All 169 tests pass with zero warnings.
+- CI and release workflows now target the current Gleam toolchain.
+- Tag-triggered releases can publish automatically to Hex.pm when `HEX_API_KEY` is present.
+- The package remains green: 169 tests pass with zero warnings.
 
 ## Basic Usage
 

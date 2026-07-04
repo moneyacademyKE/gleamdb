@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
-          gleam-version: "1.4.0"
+          gleam-version: "1.17.0"
           otp-version: "26"
       - run: gleam format --check src test bench
       - run: gleam test
