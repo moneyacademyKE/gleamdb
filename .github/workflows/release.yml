@@ -13,6 +13,7 @@ jobs:
         with:
           gleam-version: "1.17.0"
           otp-version: "26"
+          rebar3-version: "3"
       - run: gleam docs build
       - run: gleam test
       - name: Verify version matches tag

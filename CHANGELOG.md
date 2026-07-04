@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.3 - 2026-07-04
+
+### Changed
+
+- GitHub Actions workflows now install `rebar3`, fixing autonomous CI and Hex publishing for dependencies that require Rebar3.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures, no warnings.
+- Release workflow configured with `HEX_API_KEY` and `rebar3` support for autonomous Hex publishing.
+
 ## 2.4.2 - 2026-07-04
 
 ### Changed

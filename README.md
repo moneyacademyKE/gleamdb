@@ -41,14 +41,14 @@ Add `aarondb` to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "2.4.2"
+aarondb = "2.4.3"
 ```
 
-## Why 2.4.2 Is Better
+## Why 2.4.3 Is Better
 
-AaronDB 2.4.2 verifies the autonomous release pipeline end-to-end.
+AaronDB 2.4.3 fixes the final GitHub Actions dependency gap for autonomous releases.
 
-- CI and release workflows now target the current Gleam toolchain.
+- CI and release workflows now target the current Gleam toolchain and install `rebar3`.
 - Tag-triggered releases can publish automatically to Hex.pm when `HEX_API_KEY` is present.
 - The package remains green: 169 tests pass with zero warnings.
 

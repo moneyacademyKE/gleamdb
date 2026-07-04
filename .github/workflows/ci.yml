@@ -14,5 +14,6 @@ jobs:
         with:
           gleam-version: "1.17.0"
           otp-version: "26"
+          rebar3-version: "3"
       - run: gleam format --check src test bench
       - run: gleam test
