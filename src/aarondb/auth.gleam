@@ -1,12 +1,11 @@
+import gleam/json
 import gleam/list
 import gleam/string
-import gleam/json
 
 /// Rich Hickey 🧙🏾‍♂️:
 /// Identity is who you are. Authority is what you can do.
 /// Capability-based security completely decomplects Identity from Authority.
 /// This module implements an attenuable token verification layer.
-
 pub type Action {
   Read
   Write
@@ -24,11 +23,7 @@ pub type Capability {
 }
 
 pub type Token {
-  Token(
-    id: String,
-    capabilities: List(Capability),
-    issuer: String,
-  )
+  Token(id: String, capabilities: List(Capability), issuer: String)
 }
 
 /// Verifies if a given Token satisfies a list of required capabilities.
@@ -41,9 +36,7 @@ pub fn authorize(
   // All required capabilities must be satisfied by at least one provided capability.
   let is_authorized =
     list.all(required, fn(req: Capability) {
-      list.any(token.capabilities, fn(prov: Capability) {
-        subsumes(prov, req)
-      })
+      list.any(token.capabilities, fn(prov: Capability) { subsumes(prov, req) })
     })
 
   case is_authorized {

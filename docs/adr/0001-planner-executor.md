@@ -16,10 +16,11 @@ Split query execution into explicit phases:
 - `engine/executor.gleam` executes planned clauses over binding contexts and delegates unknown clauses through a solver callback.
 - `engine/solver_context.gleam` carries the database state, rules, derived facts, and temporal basis through solver boundaries.
 
-The initial implementation preserves existing clause semantics. It changes boundaries, not behavior.
+The implementation preserves existing clause semantics. It changes boundaries, not behavior.
 
 ## Consequences
 
 - `engine.run` is now orchestration code rather than a full interpreter loop.
-- Specialized clause modules can remain independent of planner/executor mechanics.
-- Aggregate and temporal solving can be extracted later using `SolverContext`, but should remain in `engine.gleam` until their callback contract is clearer.
+- Specialized clause modules remain independent of planner/executor mechanics.
+- The solver is now split into dedicated protocol modules under `engine/solver/`.
+- Derived-clause handling and dispatch are separate concerns, which reduced `engine.gleam` substantially while keeping tests green.

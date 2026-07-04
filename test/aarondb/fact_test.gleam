@@ -24,15 +24,16 @@ pub fn encode_decode_value_test() {
 }
 
 pub fn encode_decode_datom_test() {
-  let d = fact.Datom(
-    entity: fact.EntityId(1),
-    attribute: "name",
-    value: fact.Str("Alice"),
-    tx: 100,
-    tx_index: 0,
-    valid_time: 0,
-    operation: fact.Assert,
-  )
+  let d =
+    fact.Datom(
+      entity: fact.EntityId(1),
+      attribute: "name",
+      value: fact.Str("Alice"),
+      tx: 100,
+      tx_index: 0,
+      valid_time: 0,
+      operation: fact.Assert,
+    )
   let assert Ok(#(d2, _)) = fact.decode_datom(fact.encode_datom(d))
   should.equal(d, d2)
 }

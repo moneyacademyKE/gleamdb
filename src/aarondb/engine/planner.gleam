@@ -60,7 +60,9 @@ pub fn page_rows(
   }
 }
 
-fn collect_aggregates(clauses: List(ast.BodyClause)) -> Dict(String, ast.AggFunc) {
+fn collect_aggregates(
+  clauses: List(ast.BodyClause),
+) -> Dict(String, ast.AggFunc) {
   list.fold(clauses, dict.new(), fn(acc, clause) {
     case clause {
       ast.Aggregate(var, func, _, _) -> dict.insert(acc, var, func)

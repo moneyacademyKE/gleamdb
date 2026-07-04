@@ -16,10 +16,11 @@ pub type NestedSolver =
     solver_context.SolverContext,
     List(ast.BodyClause),
     List(Dict(String, fact.Value)),
-  ) -> #(
-    List(Dict(String, fact.Value)),
-    Option(Dict(String, List(internal.StorageChunk))),
-  )
+  ) ->
+    #(
+      List(Dict(String, fact.Value)),
+      Option(Dict(String, List(internal.StorageChunk))),
+    )
 
 pub fn solve(
   ctx: Dict(String, fact.Value),
@@ -73,7 +74,8 @@ fn columnar_aggregate(
   Option(Dict(String, List(internal.StorageChunk))),
 ) {
   let chunks =
-    dict.get(solver.db_state.columnar_store, target_var) |> gleam_result_unwrap([])
+    dict.get(solver.db_state.columnar_store, target_var)
+    |> gleam_result_unwrap([])
 
   let cracking_pivots =
     list.filter_map(filters, fn(c) {
@@ -94,9 +96,11 @@ fn columnar_aggregate(
 
   let agg_val = case func {
     ast.Sum ->
-      fact.Float(list.fold(updated_chunks, 0.0, fn(acc, c) {
-        acc +. vectorized.sum_column(c)
-      }))
+      fact.Float(
+        list.fold(updated_chunks, 0.0, fn(acc, c) {
+          acc +. vectorized.sum_column(c)
+        }),
+      )
     ast.Avg -> {
       let total_sum =
         list.fold(updated_chunks, 0.0, fn(acc, c) {
@@ -144,7 +148,10 @@ fn get_values_row_based(
   list.filter_map(sub_results, fn(res) { dict.get(res, target_var) })
 }
 
-fn schema_config(db_state: state.DbState, attribute: String) -> fact.AttributeConfig {
+fn schema_config(
+  db_state: state.DbState,
+  attribute: String,
+) -> fact.AttributeConfig {
   dict.get(db_state.schema, attribute)
   |> gleam_result_unwrap(fact.AttributeConfig(
     unique: False,

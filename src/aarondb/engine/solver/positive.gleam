@@ -101,11 +101,21 @@ fn lookup_memory(
 ) -> List(fact.Datom) {
   case e_val, v_val {
     Some(fact.Ref(fact.EntityId(e))), Some(v) ->
-      index.get_datoms_by_entity_attr_val(db_state.eavt, fact.EntityId(e), attr, v)
+      index.get_datoms_by_entity_attr_val(
+        db_state.eavt,
+        fact.EntityId(e),
+        attr,
+        v,
+      )
     Some(fact.Ref(fact.EntityId(e))), None ->
       index.get_datoms_by_entity_attr(db_state.eavt, fact.EntityId(e), attr)
     Some(fact.Int(e)), Some(v) ->
-      index.get_datoms_by_entity_attr_val(db_state.eavt, fact.EntityId(e), attr, v)
+      index.get_datoms_by_entity_attr_val(
+        db_state.eavt,
+        fact.EntityId(e),
+        attr,
+        v,
+      )
     Some(fact.Int(e)), None ->
       index.get_datoms_by_entity_attr(db_state.eavt, fact.EntityId(e), attr)
     None, Some(v) -> index.get_datoms_by_val(db_state.aevt, attr, v)

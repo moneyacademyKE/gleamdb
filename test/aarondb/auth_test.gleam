@@ -1,5 +1,5 @@
+import aarondb/auth.{Admin, All, Capability, Database, Read, Shard, Token, Write}
 import gleeunit/should
-import aarondb/auth.{Capability, Read, Write, Admin, All, Shard, Database, Token}
 
 pub fn authorize_exact_match_test() {
   let token = Token("t1", [Capability(Read, Shard(1))], "iss")
@@ -11,7 +11,7 @@ pub fn authorize_exact_match_test() {
 
 pub fn authorize_subsumes_action_test() {
   let token = Token("t1", [Capability(Admin, Database("main"))], "iss")
-  
+
   // Admin on Database should subsume Write on Shard within that Database
   let required = [Capability(Write, Shard(1))]
 
@@ -44,7 +44,8 @@ pub fn authorize_fails_insufficient_action_test() {
 }
 
 pub fn decode_token_test() {
-  let payload = "{
+  let payload =
+    "{
     \"id\": \"123\",
     \"iss\": \"admin\",
     \"caps\": [

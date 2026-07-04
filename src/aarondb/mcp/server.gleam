@@ -104,7 +104,14 @@ fn handle_remember(db: Db, args: decode.Dynamic) -> Result(json.Json, String) {
       ]
 
       let required_caps = [auth.Capability(auth.Write, auth.All)]
-      case gateway.authorize_and_transact(db, capability_token, facts, required_caps) {
+      case
+        gateway.authorize_and_transact(
+          db,
+          capability_token,
+          facts,
+          required_caps,
+        )
+      {
         Ok(_) -> Ok(json.object([#("id", json.int(id))]))
         Error(gateway.Unauthorized(e)) -> Error("Unauthorized: " <> e)
         Error(gateway.TransactError(e)) -> Error("Transaction failed: " <> e)
@@ -128,9 +135,21 @@ fn handle_recall(db: Db, args: decode.Dynamic) -> Result(json.Json, String) {
       let intent = rag.ConceptRecall(ctx_str, 0.5, 10)
       let query_ast = rag.build_query(intent)
       let required_caps = [auth.Capability(auth.Read, auth.All)]
-      
-      case gateway.authorize_and_query(db, capability_token, query_ast.where, required_caps) {
-        Ok(results) -> Ok(json.array(results.rows, fn(_) { json.string("TODO: format engram") }))
+
+      case
+        gateway.authorize_and_query(
+          db,
+          capability_token,
+          query_ast.where,
+          required_caps,
+        )
+      {
+        Ok(results) ->
+          Ok(
+            json.array(results.rows, fn(_) {
+              json.string("TODO: format engram")
+            }),
+          )
         Error(gateway.Unauthorized(e)) -> Error("Unauthorized: " <> e)
         Error(gateway.TransactError(e)) -> Error("Transaction failed: " <> e)
         Error(gateway.QueryError(e)) -> Error("Query failed: " <> e)

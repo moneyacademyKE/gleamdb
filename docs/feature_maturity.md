@@ -12,9 +12,9 @@ This document separates implemented capability from vision. The goal is to keep 
 
 | Feature Area | Level | Evidence | Main Risk |
 | --- | --- | --- | --- |
-| Core transactor and DB state | Stable | `src/aarondb.gleam`, `src/aarondb/transactor.gleam`, broad tests | Large core modules raise change risk |
+| Core transactor and DB state | Stable | `src/aarondb.gleam`, `src/aarondb/transactor.gleam`, broad tests | Core orchestration files are still moderately large |
 | Fact and datom model | Stable | `src/aarondb/fact.gleam` | None beyond normal API evolution |
-| Query DSL and query execution | Stable | `src/aarondb/q.gleam`, `src/aarondb/engine.gleam` | Engine complexity is concentrated in one file |
+| Query DSL and query execution | Stable | `src/aarondb/q.gleam`, planner/executor/solver modules, direct tests | Solver dispatch remains the densest remaining core logic |
 | Pull, history, diff, with_facts | Stable | Public API plus dedicated tests | Pull and query behavior share a large execution surface |
 | Schema constraints | Stable | Uniqueness, cardinality, check, composite validation in transactor | Validation cost may grow with data size |
 | Temporal querying | Beta | `query_at`, valid-time fields, temporal tests | Temporal semantics are coupled to general engine execution |

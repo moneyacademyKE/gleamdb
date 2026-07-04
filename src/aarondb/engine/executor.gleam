@@ -20,10 +20,11 @@ pub type ClauseSolver =
     ast.BodyClause,
     Dict(String, fact.Value),
     Option(Dict(String, List(internal.StorageChunk))),
-  ) -> #(
-    List(Dict(String, fact.Value)),
-    Option(Dict(String, List(internal.StorageChunk))),
-  )
+  ) ->
+    #(
+      List(Dict(String, fact.Value)),
+      Option(Dict(String, List(internal.StorageChunk))),
+    )
 
 pub fn execute(
   clauses: List(ast.BodyClause),
@@ -44,7 +45,10 @@ pub fn execute(
         ast.GroupBy(_) -> #(contexts, current_store)
         ast.Filter(expr) -> {
           let compiled_pred = predicate.compile(expr)
-          #(list.filter(contexts, fn(ctx) { compiled_pred(ctx) }), current_store)
+          #(
+            list.filter(contexts, fn(ctx) { compiled_pred(ctx) }),
+            current_store,
+          )
         }
         _ -> solve_all_contexts(contexts, current_store, clause, solve)
       }

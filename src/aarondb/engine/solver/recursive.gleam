@@ -17,10 +17,11 @@ pub type ClauseSolver =
     List(ast.Rule),
     Option(Int),
     Option(Int),
-  ) -> #(
-    List(Dict(String, fact.Value)),
-    Option(Dict(String, List(internal.StorageChunk))),
-  )
+  ) ->
+    #(
+      List(Dict(String, fact.Value)),
+      Option(Dict(String, List(internal.StorageChunk))),
+    )
 
 pub fn solve_clauses(
   solver: solver_context.SolverContext,

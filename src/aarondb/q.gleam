@@ -186,7 +186,11 @@ pub fn valid_temporal(
 }
 
 /// Filter results since a specific value (exclusive)
-pub fn since(builder: QueryBuilder, variable: String, val: Part) -> QueryBuilder {
+pub fn since(
+  builder: QueryBuilder,
+  variable: String,
+  val: Part,
+) -> QueryBuilder {
   let clause = ast.Filter(ast.Gt(Var(variable), val))
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }

@@ -21,38 +21,34 @@ pub fn handle_tick(state: state.DbState) -> state.DbState {
     |> list.map(fn(item) { item.0 })
 
   let #(new_eavt, new_aevt, new_avet) =
-    list.fold(
-      disk_attrs,
-      #(state.eavt, state.aevt, state.avet),
-      fn(acc, attr) {
-        let #(acc_eavt, acc_aevt, acc_avet) = acc
-        let cold =
-          index.get_cold_datoms(acc_eavt, cut_off)
-          |> list.filter(fn(d: fact.Datom) { d.attribute == attr })
+    list.fold(disk_attrs, #(state.eavt, state.aevt, state.avet), fn(acc, attr) {
+      let #(acc_eavt, acc_aevt, acc_avet) = acc
+      let cold =
+        index.get_cold_datoms(acc_eavt, cut_off)
+        |> list.filter(fn(d: fact.Datom) { d.attribute == attr })
 
-        case cold {
-          [] -> acc
-          _ -> {
-            let _ = storage.append(state.adapter, cold)
-            case state.ets_name {
-              Some(name) -> {
-                list.each(cold, fn(d) {
-                  let _ = ets_index.insert_datom(name <> "_eavt", d.entity, d)
-                  let _ = ets_index.insert_datom(name <> "_aevt", d.attribute, d)
-                })
-              }
-              None -> Nil
+      case cold {
+        [] -> acc
+        _ -> {
+          let _ = storage.append(state.adapter, cold)
+          case state.ets_name {
+            Some(name) -> {
+              list.each(cold, fn(d) {
+                let _ = ets_index.insert_datom(name <> "_eavt", d.entity, d)
+                let _ = ets_index.insert_datom(name <> "_aevt", d.attribute, d)
+              })
             }
-            let next_eavt = index.evict_from_memory(acc_eavt, cold)
-            let next_aevt =
-              list.fold(cold, acc_aevt, fn(a, d) { index.delete_aevt(a, d) })
-            let next_avet =
-              list.fold(cold, acc_avet, fn(a, d) { index.delete_avet(a, d) })
-            #(next_eavt, next_aevt, next_avet)
+            None -> Nil
           }
+          let next_eavt = index.evict_from_memory(acc_eavt, cold)
+          let next_aevt =
+            list.fold(cold, acc_aevt, fn(a, d) { index.delete_aevt(a, d) })
+          let next_avet =
+            list.fold(cold, acc_avet, fn(a, d) { index.delete_avet(a, d) })
+          #(next_eavt, next_aevt, next_avet)
         }
-      },
-    )
+      }
+    })
 
   case state.config.prefetch_enabled {
     True -> {

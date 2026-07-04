@@ -42,15 +42,14 @@ They support the main query path and are updated during transaction processing.
 
 ### 4. Interpreted Query Execution
 
-Queries are represented as AST values and executed by a custom interpreter. The engine also includes rule derivation, pull handling, graph clauses, and aggregation.
-
-This is powerful, but it also means much of the system's complexity is concentrated in a small number of large modules.
+Queries are represented as AST values and executed by a planner, executor, and solver stack. The solver still uses an interpreted model, but the main responsibilities are now separated into smaller protocol modules.
 
 Current engine boundaries:
 
-- `engine.gleam`: top-level query orchestration, rule derivation, core clause solving, aggregate and temporal coordination.
+- `engine.gleam`: top-level query orchestration plus a small amount of solver glue.
 - `engine/planner.gleam`: query optimization, aggregate metadata collection, and top-level result ordering/pagination.
 - `engine/executor.gleam`: planned clause execution over contexts with a clause-solver callback.
+- `engine/solver/core.gleam`: clause dispatch hub for non-derived clause solving.
 - `engine/solver/bindings.gleam`: part resolution helpers.
 - `engine/solver/stores.gleam`: columnar store merging utilities.
 - `engine/solver/triple.gleam`: positive/negative triple matching against base and derived facts.
@@ -66,7 +65,13 @@ Current engine boundaries:
 - `engine/retrieval.gleam`: vector similarity and custom-index clauses.
 - `engine/string_clause.gleam`: string prefix clauses backed by ART.
 - `engine/virtual.gleam`: virtual predicate argument and output binding.
+- `transactor.gleam`: actor startup, public API wrappers, transaction state assembly, and message dispatch glue.
+- `transactor/apply.gleam`: datom application, cardinality handling, retention, and index updates.
+- `transactor/runtime.gleam`: transaction reply flow and state recovery.
+- `transactor/lifecycle.gleam`: tick-time eviction and prefetch lifecycle work.
+- `transactor/schema.gleam`: schema and composite validation helpers.
 - `transactor/validation.gleam`: transaction constraint validation (uniqueness, check, composite).
+- `transactor/messages.gleam`: reusable message-branch handlers for the actor dispatcher.
 
 ## Extension Layers
 
@@ -84,7 +89,7 @@ These exist in the repository, but should be treated as optional layers over the
 
 AaronDB has a strong center and a broad edge.
 
-- The center is the transactor, datom model, indexes, and query engine.
+- The center is the transactor, datom model, indexes, planner/executor, and solver stack.
 - The edge contains several ambitious systems at different maturity levels.
 
 That means the main architectural task is not inventing more features. It is preserving clarity around the core while preventing optional layers from becoming inseparable from it.
@@ -94,4 +99,4 @@ That means the main architectural task is not inventing more features. It is pre
 1. Keep the core database contract small and explicit.
 2. Treat distributed, agent, search, and CMS modules as extension surfaces.
 3. Reduce documentation drift by tying claims to exported APIs and tests.
-4. Keep future engine changes inside the smallest concern-specific module possible.
+4. Keep future engine and transactor changes inside the smallest concern-specific module possible.

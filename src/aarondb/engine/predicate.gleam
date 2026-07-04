@@ -4,9 +4,7 @@ import gleam/dict.{type Dict}
 import gleam/option.{Some}
 import gleam/order
 
-pub fn compile(
-  expr: ast.Expression,
-) -> fn(Dict(String, fact.Value)) -> Bool {
+pub fn compile(expr: ast.Expression) -> fn(Dict(String, fact.Value)) -> Bool {
   case expr {
     ast.Eq(a, b) -> {
       fn(ctx) {

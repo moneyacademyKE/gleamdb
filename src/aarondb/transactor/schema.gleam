@@ -6,10 +6,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 
-pub fn validate_unique(
-  state: state.DbState,
-  attr: String,
-) -> Option(String) {
+pub fn validate_unique(state: state.DbState, attr: String) -> Option(String) {
   let datoms =
     index.filter_by_attribute(state.aevt, attr)
     |> list.filter(fn(d) { d.operation == fact.Assert })
@@ -24,7 +21,9 @@ pub fn validate_unique(
     })
   case has_dupes {
     True ->
-      Some("Cannot make non-unique attribute unique: existing data has duplicates")
+      Some(
+        "Cannot make non-unique attribute unique: existing data has duplicates",
+      )
     False -> None
   }
 }
@@ -47,15 +46,14 @@ pub fn validate_cardinality_one(
     })
   case has_multi {
     True ->
-      Some("Cannot set cardinality to ONE: existing entities have multiple values")
+      Some(
+        "Cannot set cardinality to ONE: existing entities have multiple values",
+      )
     False -> None
   }
 }
 
-pub fn validate_composite(
-  state: state.DbState,
-  attrs: List(String),
-) -> Bool {
+pub fn validate_composite(state: state.DbState, attrs: List(String)) -> Bool {
   let entity_map =
     list.fold(attrs, dict.new(), fn(acc, attr) {
       let datoms =

@@ -69,7 +69,8 @@ fn validate_uniqueness(
               && td.tx_index < d.tx_index
             })
           case in_flight_violation {
-            True -> Error("Uniqueness violation (in-flight) for " <> d.attribute)
+            True ->
+              Error("Uniqueness violation (in-flight) for " <> d.attribute)
             False -> Ok(Nil)
           }
         }
@@ -127,7 +128,8 @@ fn validate_composite(
       }
 
       let all_groups = list.append(registered_groups, schema_groups)
-      let groups = list.filter(all_groups, fn(c) { list.contains(c, d.attribute) })
+      let groups =
+        list.filter(all_groups, fn(c) { list.contains(c, d.attribute) })
 
       list.fold_until(groups, Ok(Nil), fn(_, attrs) {
         let current_values =
@@ -146,13 +148,19 @@ fn validate_composite(
                   Ok(ifd) -> list.Continue(Ok([#(attr, ifd.value), ..acc]))
                   Error(_) -> {
                     case
-                      index.get_datoms_by_entity_attr(state.eavt, d.entity, attr)
+                      index.get_datoms_by_entity_attr(
+                        state.eavt,
+                        d.entity,
+                        attr,
+                      )
                       |> list.filter(fn(d) { d.operation == fact.Assert })
                     {
                       [existing_d, ..] ->
                         list.Continue(Ok([#(attr, existing_d.value), ..acc]))
                       [] ->
-                        list.Stop(Error("Missing attribute for composite: " <> attr))
+                        list.Stop(Error(
+                          "Missing attribute for composite: " <> attr,
+                        ))
                     }
                   }
                 }

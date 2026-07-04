@@ -1,7 +1,7 @@
 import aarondb.{type Db}
 import aarondb/auth
-import aarondb/shared/ast
 import aarondb/fact
+import aarondb/shared/ast
 
 pub type GatewayError {
   Unauthorized(String)
@@ -11,7 +11,6 @@ pub type GatewayError {
 
 /// Rich Hickey 🧙🏾‍♂️: The Gateway is a pure authorization boundary.
 /// It verifies capabilities before any AST reaches the internal logic.
-
 pub fn authorize_and_transact(
   db: Db,
   token_str: String,

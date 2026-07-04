@@ -12,13 +12,13 @@ import aarondb/storage
 import aarondb/storage/mnesia
 import aarondb/transactor/apply
 import aarondb/transactor/lifecycle
+import aarondb/transactor/messages
 import aarondb/transactor/runtime
 import aarondb/transactor/schema
 import aarondb/transactor/validation
 import aarondb/vec_index
 import gleam/dict
 import gleam/erlang/process
-import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
@@ -174,7 +174,10 @@ pub fn retract_entity(
   process.send(subj, RetractEntity(eid, reply))
 }
 
-pub fn log_query(subj: process.Subject(Message), ctx: state.QueryContext) -> Nil {
+pub fn log_query(
+  subj: process.Subject(Message),
+  ctx: state.QueryContext,
+) -> Nil {
   let reply = process.new_subject()
   process.send(subj, LogQuery(ctx, reply))
   // Fire and forget is okay, but we'll await with a short timeout to prevent mailbox overflow
@@ -306,7 +309,8 @@ pub fn compute_next_state(
   let vt = option.unwrap(valid_time, tx_id)
 
   // 1. Resolve transaction functions
-  let resolved_facts = apply.resolve_transaction_functions(state, tx_id, vt, facts)
+  let resolved_facts =
+    apply.resolve_transaction_functions(state, tx_id, vt, facts)
 
   // 2. Generate datoms
   let datoms_res =
@@ -392,13 +396,7 @@ fn handle_message(
 ) -> actor.Next(state.DbState, Message) {
   case msg {
     LogQuery(ctx, reply) -> {
-      let history = list.append(state.query_history, [ctx])
-      let trimmed = case list.length(history) > 100 {
-        True -> list.drop(history, list.length(history) - 100)
-        False -> history
-      }
-      process.send(reply, Nil)
-      actor.continue(state.DbState(..state, query_history: trimmed))
+      messages.log_query(state, ctx, reply)
     }
     Tick -> {
       actor.continue(lifecycle.handle_tick(state))
@@ -416,10 +414,24 @@ fn handle_message(
       actor.continue(new_state)
     }
     Transact(facts, vt, reply_to) -> {
-      runtime.do_handle_transact(state, facts, vt, fact.Assert, reply_to, compute_next_state)
+      runtime.do_handle_transact(
+        state,
+        facts,
+        vt,
+        fact.Assert,
+        reply_to,
+        compute_next_state,
+      )
     }
     Retract(facts, vt, reply_to) -> {
-      runtime.do_handle_transact(state, facts, vt, fact.Retract, reply_to, compute_next_state)
+      runtime.do_handle_transact(
+        state,
+        facts,
+        vt,
+        fact.Retract,
+        reply_to,
+        compute_next_state,
+      )
     }
     RetractEntity(eid, reply_to) -> {
       let datoms = case state.ets_name {
@@ -428,7 +440,14 @@ fn handle_message(
       }
       let facts =
         list.map(datoms, fn(d) { #(fact.Uid(d.entity), d.attribute, d.value) })
-      runtime.do_handle_transact(state, facts, option.None, fact.Retract, reply_to, compute_next_state)
+      runtime.do_handle_transact(
+        state,
+        facts,
+        option.None,
+        fact.Retract,
+        reply_to,
+        compute_next_state,
+      )
     }
     GetState(reply_to) -> {
       process.send(reply_to, state)
@@ -447,83 +466,34 @@ fn handle_message(
           }
         Some(e) -> Some(e)
       }
-      case error {
-        Some(e) -> {
-          process.send(reply_to, Error(e))
-          actor.continue(state)
-        }
-        None -> {
-          let new_schema = dict.insert(state.schema, attr, config)
-          process.send(reply_to, Ok(Nil))
-          actor.continue(state.DbState(..state, schema: new_schema))
-        }
-      }
+      messages.set_schema(state, attr, config, error, reply_to)
     }
     RegisterFunction(name, func, reply_to) -> {
-      let new_funcs = dict.insert(state.functions, name, func)
-      process.send(reply_to, Nil)
-      actor.continue(state.DbState(..state, functions: new_funcs))
+      messages.register_function(state, name, func, reply_to)
     }
     RegisterPredicate(name, pred, reply_to) -> {
-      let new_preds = dict.insert(state.predicates, name, pred)
-      process.send(reply_to, Nil)
-      actor.continue(state.DbState(..state, predicates: new_preds))
+      messages.register_predicate(state, name, pred, reply_to)
     }
     RegisterComposite(attrs, reply_to) -> {
-      case schema.validate_composite(state, attrs) {
-        True -> {
-          process.send(
-            reply_to,
-            Error(
-              "Existing data violates new composite: "
-              <> string.inspect(list.sort(attrs, string.compare)),
-            ),
-          )
-          actor.continue(state)
-        }
-        False -> {
-          let new_composites = [attrs, ..state.composites]
-          process.send(reply_to, Ok(Nil))
-          actor.continue(state.DbState(..state, composites: new_composites))
-        }
-      }
+      messages.register_composite(
+        state,
+        attrs,
+        schema.validate_composite(state, attrs),
+        reply_to,
+      )
     }
     StoreRule(rule, reply_to) -> {
-      let new_rules = [rule, ..state.stored_rules]
-      // Also transact a fact for the rule to make it queryable and persisted
-      let rule_fact = #(
-        fact.Uid(fact.EntityId(int.random(1_000_000_000))),
-        "_rule/content",
-        fact.Str(string.inspect(rule)),
-      )
-
-      case compute_next_state(state, [rule_fact], None, fact.Assert) {
-        Ok(#(final_state, datoms)) -> {
-          let _ = storage.insert(final_state.adapter, datoms)
-          let final_state_with_rules =
-            state.DbState(..final_state, stored_rules: new_rules)
-          process.send(reply_to, Ok(Nil))
-          actor.continue(final_state_with_rules)
-        }
-        Error(e) -> {
-          process.send(reply_to, Error(e))
-          actor.continue(state)
-        }
-      }
+      messages.store_rule(state, rule, reply_to, compute_next_state)
     }
     Subscribe(reply_to) -> {
-      let new_subscribers = [reply_to, ..state.subscribers]
-      actor.continue(state.DbState(..state, subscribers: new_subscribers))
+      messages.subscribe(state, reply_to)
     }
     SetConfig(config, reply_to) -> {
-      let new_state = state.DbState(..state, config: config)
-      process.send(reply_to, Nil)
-      actor.continue(new_state)
+      messages.set_config(state, config, reply_to)
     }
     _ -> actor.continue(state)
   }
 }
-
 
 pub fn subscribe(
   subj: process.Subject(Message),

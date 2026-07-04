@@ -134,7 +134,10 @@ pub fn get_datoms_by_entity_attr_val(
   |> list.filter(fn(d) { d.attribute == attr && d.value == val })
 }
 
-pub fn get_datoms_by_entity(index: Index, entity: fact.EntityId) -> List(Datom) {
+pub fn get_datoms_by_entity(
+  index: Index,
+  entity: fact.EntityId,
+) -> List(Datom) {
   dict.get(index, entity)
   |> result_to_list
 }

@@ -41,21 +41,23 @@ Add `aarondb` to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "2.3.0"
+aarondb = "2.4.0"
 ```
 
-## Why 2.3.0 Is Better
+## Why 2.4.0 Is Better
 
-AaronDB 2.3.0 completes the deeper solver and transactor redesign while keeping all tests green.
+AaronDB 2.4.0 completes the deeper solver and transactor redesign while keeping all tests green.
 
-- `engine.gleam` reduced from 2174 to 546 lines.
-- `transactor.gleam` reduced from 1130 to 534 lines.
+- `engine.gleam` reduced from 2174 to 317 lines.
+- `transactor.gleam` reduced from 1130 to 558 lines, with its runtime, lifecycle, schema, validation, apply, and message helpers extracted.
 - The solver is now split into protocol modules: bindings, stores, triple, positive, and recursive orchestration.
-- The transactor is now split into domain modules: lifecycle, schema validation, runtime, apply, and constraint validation.
+- The solver dispatch hub is extracted into `engine/solver/core.gleam`.
+- The transactor is now split into domain modules: lifecycle, schema validation, runtime, apply, messages, and constraint validation.
 - Rule derivation, aggregate clauses, and temporal clauses each have their own modules.
+- Direct unit tests now cover extracted solver and transactor modules.
 - CI runs format checks and tests automatically.
 - Benchmarks are separated from the default test suite.
-- All 161 tests pass with zero warnings.
+- All 169 tests pass with zero warnings.
 
 ## Basic Usage
 

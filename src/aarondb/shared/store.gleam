@@ -4,7 +4,6 @@ import aarondb/shared/ast
 import aarondb/shared/state.{type DbState}
 import aarondb/storage
 
-
 /// Retrieves datoms matching a pattern from the database indices.
 /// Rich Hickey alignment: "The index is an implementation detail of the fact store."
 pub fn find_datoms(db_state: DbState, pattern: ast.Clause) -> List(Datom) {

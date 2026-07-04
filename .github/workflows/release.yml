@@ -13,6 +13,7 @@ jobs:
         with:
           gleam-version: "1.4.0"
           otp-version: "26"
+      - run: gleam docs build
       - run: gleam test
       - name: Verify version matches tag
         run: |
@@ -28,3 +29,8 @@ jobs:
           body_path: CHANGELOG.md
           draft: false
           prerelease: false
+      - name: Publish to Hex
+        if: ${{ secrets.HEX_API_KEY != '' }}
+        run: gleam publish --yes
+        env:
+          HEXPM_API_KEY: ${{ secrets.HEX_API_KEY }}

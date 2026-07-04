@@ -7,7 +7,10 @@ import gleam/order
 import gleam/result
 import gleam/string
 
-pub fn aggregate(values: List(Value), op: ast.AggFunc) -> Result(Value, String) {
+pub fn aggregate(
+  values: List(Value),
+  op: ast.AggFunc,
+) -> Result(Value, String) {
   case op {
     ast.Count -> Ok(Int(list.length(values)))
     ast.Sum -> sum(values)

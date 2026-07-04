@@ -685,7 +685,10 @@ fn merge_pull_results(
   }
 }
 
-fn get_shard_id_from_map(eid: fact.Eid, shard_map: query_types.ShardMap) -> Int {
+fn get_shard_id_from_map(
+  eid: fact.Eid,
+  shard_map: query_types.ShardMap,
+) -> Int {
   let hash = case eid {
     fact.Uid(fact.EntityId(id)) -> fact.phash2(fact.Int(id))
     fact.Lookup(#(_, val)) -> fact.phash2(val)

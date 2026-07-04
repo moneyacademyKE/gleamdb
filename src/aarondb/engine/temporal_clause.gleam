@@ -15,10 +15,11 @@ pub type ClauseSolver =
     Set(fact.Datom),
     Option(Int),
     Option(Int),
-  ) -> #(
-    List(Dict(String, fact.Value)),
-    Option(Dict(String, List(internal.StorageChunk))),
-  )
+  ) ->
+    #(
+      List(Dict(String, fact.Value)),
+      Option(Dict(String, List(internal.StorageChunk))),
+    )
 
 pub fn solve(
   db_state: state.DbState,

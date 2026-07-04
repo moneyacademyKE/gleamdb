@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.4.0 - 2026-07-04
+
+### Added
+
+- Solver dispatch extracted into `engine/solver/core.gleam`.
+- Transactor message helper module `transactor/messages.gleam`.
+- Direct unit tests for extracted solver and transactor modules.
+- Contributor guide documenting the green-slice workflow.
+- Release workflow now builds docs and optionally publishes to Hex.
+
+### Changed
+
+- `engine.gleam` reduced from 546 to 317 lines.
+- `transactor.gleam` reduced from 534 to 504 lines.
+- Benchmarks remain outside the default test suite in `bench/`.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures, no warnings.
+
 ## 2.3.0 - 2026-07-04
 
 ### Added

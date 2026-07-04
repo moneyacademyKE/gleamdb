@@ -6,7 +6,9 @@ pub fn sum_column(chunk: StorageChunk) -> Float {
   sum_node(chunk.values)
 }
 
-pub fn chunks_to_datoms(chunks: List(internal.StorageChunk)) -> List(fact.Datom) {
+pub fn chunks_to_datoms(
+  chunks: List(internal.StorageChunk),
+) -> List(fact.Datom) {
   list.flat_map(chunks, fn(chunk) {
     node_to_values(chunk.values)
     |> list.map(fn(v) {

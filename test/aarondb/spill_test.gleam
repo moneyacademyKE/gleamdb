@@ -40,7 +40,9 @@ pub fn disk_spilling_test() {
   // Let's transact 3 separate batches to ensure `Tick` triggers eviction of older tx.
   let ingest_batch = fn(start, end) {
     let data =
-      int.range(from: start, to: end + 1, with: [], run: fn(acc, i) { [i, ..acc] })
+      int.range(from: start, to: end + 1, with: [], run: fn(acc, i) {
+        [i, ..acc]
+      })
       |> list.map(fn(i) {
         #(
           fact.deterministic_uid(i),

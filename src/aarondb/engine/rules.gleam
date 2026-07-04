@@ -15,10 +15,11 @@ pub type ClauseSolver =
     Set(fact.Datom),
     Option(Int),
     Option(Int),
-  ) -> #(
-    List(Dict(String, fact.Value)),
-    Option(Dict(String, List(internal.StorageChunk))),
-  )
+  ) ->
+    #(
+      List(Dict(String, fact.Value)),
+      Option(Dict(String, List(internal.StorageChunk))),
+    )
 
 pub type PartResolver =
   fn(ast.Part, Dict(String, fact.Value)) -> Option(fact.Value)
@@ -146,10 +147,7 @@ fn solve_rule_body_semi_naive(
           as_of_tx,
           as_of_valid,
         )
-      #(
-        list.append(acc_ctxs, new_ctxs),
-        merge_stores(acc_store, clause_store),
-      )
+      #(list.append(acc_ctxs, new_ctxs), merge_stores(acc_store, clause_store))
     })
   })
 }

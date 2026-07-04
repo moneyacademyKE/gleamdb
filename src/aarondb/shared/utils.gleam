@@ -12,7 +12,12 @@ pub fn extract_json(input: String) -> String {
   }
 }
 
-fn do_extract(input: String, depth: Int, in_quote: Bool, acc: String) -> String {
+fn do_extract(
+  input: String,
+  depth: Int,
+  in_quote: Bool,
+  acc: String,
+) -> String {
   case string.pop_grapheme(input) {
     Ok(#("\"", rest)) -> do_extract(rest, depth, !in_quote, acc <> "\"")
     Ok(#("{", rest)) if !in_quote ->

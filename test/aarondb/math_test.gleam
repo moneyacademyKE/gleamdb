@@ -6,7 +6,8 @@ pub fn math_cosine_similarity_test() {
   let a = [1.0, 0.0, -1.0]
   let b = [1.0, 0.0, 1.0]
   let assert Ok(res) = math.cosine_similarity(a, b)
-  should.equal(res, 0.0) // orthogonal
+  should.equal(res, 0.0)
+  // orthogonal
 
   let c = [2.0, 2.0]
   let d = [2.0, 2.0]

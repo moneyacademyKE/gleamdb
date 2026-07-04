@@ -96,7 +96,11 @@ pub fn pull(
           case item {
             ast.Wildcard -> {
               list.fold(active, acc, fn(inner_acc, d: fact.Datom) {
-                dict.insert(inner_acc, d.attribute, query_types.PullSingle(d.value))
+                dict.insert(
+                  inner_acc,
+                  d.attribute,
+                  query_types.PullSingle(d.value),
+                )
               })
             }
             ast.Attr(name) -> {
@@ -114,12 +118,18 @@ pub fn pull(
                 case list.contains(exclusions, d.attribute) {
                   True -> inner_acc
                   False ->
-                    dict.insert(inner_acc, d.attribute, query_types.PullSingle(d.value))
+                    dict.insert(
+                      inner_acc,
+                      d.attribute,
+                      query_types.PullSingle(d.value),
+                    )
                 }
               })
             }
-            ast.PullRecursion(attr, depth) -> pull_recursion(db_state, active, acc, attr, depth)
-            ast.Nested(name, sub_pattern) -> pull_nested(db_state, active, acc, name, sub_pattern)
+            ast.PullRecursion(attr, depth) ->
+              pull_recursion(db_state, active, acc, attr, depth)
+            ast.Nested(name, sub_pattern) ->
+              pull_nested(db_state, active, acc, name, sub_pattern)
           }
         })
       query_types.PullMap(mapped)
@@ -202,7 +212,10 @@ fn pull_recursion(
         list.map(values, fn(v) {
           case v {
             fact.Ref(next_id) ->
-              pull(db_state, next_id, [ast.Wildcard, ast.PullRecursion(attr, depth - 1)])
+              pull(db_state, next_id, [
+                ast.Wildcard,
+                ast.PullRecursion(attr, depth - 1),
+              ])
             fact.Int(next_id_int) ->
               pull(db_state, fact.EntityId(next_id_int), [
                 ast.Wildcard,
@@ -239,7 +252,8 @@ fn pull_nested(
         list.map(values, fn(v) {
           case v {
             fact.Ref(eid) -> pull(db_state, eid, sub_pattern)
-            fact.Int(sub_id) -> pull(db_state, fact.EntityId(sub_id), sub_pattern)
+            fact.Int(sub_id) ->
+              pull(db_state, fact.EntityId(sub_id), sub_pattern)
             _ -> query_types.PullSingle(v)
           }
         })

@@ -27,7 +27,16 @@ pub fn similarity(
       }
     }
     Ok(_) -> []
-    Error(Nil) -> unbound_similarity(db_state, var, vec, threshold, ctx, as_of_tx, as_of_valid)
+    Error(Nil) ->
+      unbound_similarity(
+        db_state,
+        var,
+        vec,
+        threshold,
+        ctx,
+        as_of_tx,
+        as_of_valid,
+      )
   }
 }
 

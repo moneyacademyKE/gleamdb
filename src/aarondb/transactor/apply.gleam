@@ -152,7 +152,8 @@ fn component_cascade(
         let child_datoms = index.filter_by_entity(curr_state.eavt, child_eid)
         list.fold(child_datoms, #(curr_state, curr_datoms, idx), fn(acc2, cd) {
           let #(s2, d2, i2) = acc2
-          let r_d = fact.Datom(..cd, operation: fact.Retract, tx: d.tx, tx_index: i2)
+          let r_d =
+            fact.Datom(..cd, operation: fact.Retract, tx: d.tx, tx_index: i2)
           #(update_indices(s2, r_d), [r_d, ..d2], i2 + 1)
         })
       })
@@ -169,17 +170,23 @@ fn cardinality_one(
 ) -> #(state.DbState, List(fact.Datom), Int) {
   case config.cardinality == fact.One && d.operation == fact.Assert {
     True -> {
-      let all_datoms = index.get_datoms_by_entity_attr(state.eavt, d.entity, d.attribute)
-      let asserts = list.filter(all_datoms, fn(d) { d.operation == fact.Assert })
-      let retractions = list.filter(all_datoms, fn(d) { d.operation == fact.Retract })
+      let all_datoms =
+        index.get_datoms_by_entity_attr(state.eavt, d.entity, d.attribute)
+      let asserts =
+        list.filter(all_datoms, fn(d) { d.operation == fact.Assert })
+      let retractions =
+        list.filter(all_datoms, fn(d) { d.operation == fact.Retract })
       let active_asserts =
         list.filter(asserts, fn(ad) {
-          !list.any(retractions, fn(rd) { rd.value == ad.value && rd.tx >= ad.tx })
+          !list.any(retractions, fn(rd) {
+            rd.value == ad.value && rd.tx >= ad.tx
+          })
         })
 
       list.fold(active_asserts, #(state, [], tx_idx_counter), fn(acc, old_d) {
         let #(s, ds, i) = acc
-        let r_d = fact.Datom(..old_d, operation: fact.Retract, tx: d.tx, tx_index: i)
+        let r_d =
+          fact.Datom(..old_d, operation: fact.Retract, tx: d.tx, tx_index: i)
         #(update_indices(s, r_d), [r_d, ..ds], i + 1)
       })
     }
@@ -194,7 +201,8 @@ fn retention_policy(
 ) -> state.DbState {
   case config.retention == fact.LatestOnly && d.operation == fact.Assert {
     True -> {
-      let existing = index.get_datoms_by_entity_attr(state.eavt, d.entity, d.attribute)
+      let existing =
+        index.get_datoms_by_entity_attr(state.eavt, d.entity, d.attribute)
       list.fold(existing, state, fn(acc, old_d) {
         state.DbState(..acc, eavt: index.evict_from_memory(acc.eavt, [old_d]))
       })
