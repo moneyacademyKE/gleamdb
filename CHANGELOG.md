@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.3.0 - 2026-07-04
+
+### Added
+
+- Solver protocol with explicit modules for bindings, stores, triple solving, positive solving, and recursive orchestration under `engine/solver/`.
+- Transactor domain modules: `lifecycle.gleam` (tick/eviction), `schema.gleam` (schema validation), `runtime.gleam` (transaction handling), `apply.gleam` (datom application), `validation.gleam` (constraint validation).
+- Rule derivation extracted to `engine/rules.gleam`.
+- Aggregate and temporal clause solving extracted to dedicated modules.
+- CI workflow for format checking and testing.
+- Release workflow with version verification.
+- Benchmark moved to `bench/` directory, separated from default test suite.
+- ADR 0001 for planner/executor architecture.
+
+### Changed
+
+- `engine.gleam` reduced from 2174 to 546 lines.
+- `transactor.gleam` reduced from 1130 to 534 lines.
+- Feature docs updated with experimental maturity warnings.
+- All test warnings cleaned.
+- Planner and executor test coverage expanded.
+
+### Verification
+
+- `gleam test`: 161 passed, no failures, no warnings.
+
 ## 2.2.0 - 2026-07-04
 
 ### Added

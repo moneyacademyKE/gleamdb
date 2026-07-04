@@ -1,0 +1,30 @@
+---
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          gleam-version: "1.4.0"
+          otp-version: "26"
+      - run: gleam test
+      - name: Verify version matches tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          VERSION=$(grep '^version' gleam.toml | sed 's/.*"\(.*\)"/\1/')
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Tag $TAG does not match gleam.toml version $VERSION"
+            exit 1
+          fi
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false

@@ -1,8 +1,8 @@
 import aarondb
-import aarondb/fact.{type AttributeConfig, All, Columnar, Int, One, Row}
+import aarondb/fact.{All, Columnar, Int, One}
 import aarondb/q
-import aarondb/shared/ast.{type BodyClause, Positive, Val, Var} as types
-import gleam/option.{None, Some}
+import aarondb/shared/ast.{Val, Var} as types
+import gleam/option.{None}
 
 pub fn cracking_test() {
   let db = aarondb.new()

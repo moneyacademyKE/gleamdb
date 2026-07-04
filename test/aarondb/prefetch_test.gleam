@@ -4,7 +4,7 @@ import aarondb/shared/state as types
 import aarondb/transactor
 import gleam/erlang/process
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{None}
 import gleeunit/should
 
 pub fn predictive_prefetch_test() {

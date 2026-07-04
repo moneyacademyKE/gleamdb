@@ -11,7 +11,8 @@ pub fn expected_morsel_test() {
 
   // 2. Ingest Dataset
   let data =
-    list.range(1, 250)
+    int.range(from: 1, to: 251, with: [], run: list.prepend)
+    |> list.reverse()
     |> list.flat_map(fn(i) {
       let eid = fact.deterministic_uid(i)
       [#(eid, "item/type", fact.Str("parallel_item"))]

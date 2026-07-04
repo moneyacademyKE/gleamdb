@@ -2,11 +2,10 @@ import aarondb
 import aarondb/fact
 import aarondb/sharded
 import aarondb/shared/ast as types
-import aarondb/shared/query_types
 import gleam/dict
 import gleam/erlang/process
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{None}
 import gleeunit/should
 
 pub fn distributed_sum_test() {

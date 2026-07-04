@@ -1,4 +1,3 @@
-import aarondb/engine/prefetch
 import aarondb/fact
 import aarondb/global
 import aarondb/index
@@ -10,8 +9,12 @@ import aarondb/reactive
 import aarondb/shared/ast
 import aarondb/shared/state
 import aarondb/storage
-import aarondb/storage/internal
 import aarondb/storage/mnesia
+import aarondb/transactor/apply
+import aarondb/transactor/lifecycle
+import aarondb/transactor/runtime
+import aarondb/transactor/schema
+import aarondb/transactor/validation
 import aarondb/vec_index
 import gleam/dict
 import gleam/erlang/process
@@ -303,7 +306,7 @@ pub fn compute_next_state(
   let vt = option.unwrap(valid_time, tx_id)
 
   // 1. Resolve transaction functions
-  let resolved_facts = resolve_transaction_functions(state, tx_id, vt, facts)
+  let resolved_facts = apply.resolve_transaction_functions(state, tx_id, vt, facts)
 
   // 2. Generate datoms
   let datoms_res =
@@ -352,7 +355,7 @@ pub fn compute_next_state(
         list.fold(datoms, #(state, [], 0), fn(acc, d) {
           let #(curr_state, collected, next_idx) = acc
           let #(new_state, side_effects, updated_idx) =
-            apply_datom(
+            apply.apply_datom(
               curr_state,
               fact.Datom(..d, tx_index: next_idx),
               next_idx,
@@ -366,7 +369,7 @@ pub fn compute_next_state(
       let validate_res =
         list.fold_until(all_datoms, Ok(Nil), fn(_, d) {
           // Use INITIAL state for validation, but include IN-FLIGHT datoms
-          case validate_datom_full(state, all_datoms, d) {
+          case validation.validate_datom(state, all_datoms, d) {
             Ok(_) -> list.Continue(Ok(Nil))
             Error(e) -> list.Stop(Error(e))
           }
@@ -378,196 +381,6 @@ pub fn compute_next_state(
         }
         Error(e) -> Error(e)
       }
-    }
-    Error(e) -> Error(e)
-  }
-}
-
-fn validate_datom_full(
-  state: state.DbState,
-  tx_datoms: List(fact.Datom),
-  d: fact.Datom,
-) -> Result(Nil, String) {
-  let config =
-    dict.get(state.schema, d.attribute)
-    |> result.unwrap(fact.AttributeConfig(
-      unique: False,
-      component: False,
-      retention: fact.All,
-      cardinality: fact.Many,
-      check: None,
-      composite_group: None,
-      layout: fact.Row,
-      tier: fact.Memory,
-      eviction: fact.AlwaysInMemory,
-    ))
-
-  // Uniqueness check (including in-flight)
-  let res = case config.unique && d.operation == fact.Assert {
-    True -> {
-      let existing = index.get_datoms_by_val(state.aevt, d.attribute, d.value)
-      // Filter out existing datoms that are retracted in the SAME transaction
-      let effectively_existing =
-        list.filter(existing, fn(ed) {
-          ed.operation == fact.Assert
-          && !list.any(tx_datoms, fn(td) {
-            td.entity == ed.entity
-            && td.attribute == ed.attribute
-            && td.operation == fact.Retract
-          })
-        })
-
-      case effectively_existing {
-        [ed, ..] if ed.entity != d.entity ->
-          Error("Uniqueness violation for " <> d.attribute)
-        _ -> {
-          // Check in-flight asserts (only those that appeared BEFORE d)
-          let in_flight_violation =
-            list.any(tx_datoms, fn(td) {
-              td.attribute == d.attribute
-              && td.value == d.value
-              && td.entity != d.entity
-              && td.operation == fact.Assert
-              && td.tx_index < d.tx_index
-            })
-          case in_flight_violation {
-            True ->
-              Error("Uniqueness violation (in-flight) for " <> d.attribute)
-            False -> Ok(Nil)
-          }
-        }
-      }
-    }
-    False -> Ok(Nil)
-  }
-
-  // Check constraint
-  let res = case res {
-    Ok(_) -> {
-      case config.check {
-        Some(pred_name) -> {
-          case dict.get(state.predicates, pred_name) {
-            Ok(pred) -> {
-              case pred(d.value) {
-                True -> Ok(Nil)
-                False -> Error("Check constraint failed: " <> pred_name)
-              }
-            }
-            Error(_) -> Ok(Nil)
-          }
-        }
-        None -> Ok(Nil)
-      }
-    }
-    Error(e) -> Error(e)
-  }
-
-  // Composite check
-  case res {
-    Ok(_) -> {
-      let registered_groups = state.composites
-      let schema_groups = case config.composite_group {
-        Some(group_name) -> {
-          let attrs =
-            dict.to_list(state.schema)
-            |> list.filter(fn(item) {
-              { item.1 }.composite_group == Some(group_name)
-            })
-            |> list.map(fn(item) { item.0 })
-          [attrs]
-        }
-        None -> []
-      }
-
-      let all_groups = list.append(registered_groups, schema_groups)
-      let groups =
-        list.filter(all_groups, fn(c) { list.contains(c, d.attribute) })
-
-      list.fold_until(groups, Ok(Nil), fn(_, attrs) {
-        let current_values =
-          list.fold_until(attrs, Ok([]), fn(acc_res, attr) {
-            let assert Ok(acc) = acc_res
-            case attr == d.attribute {
-              True -> list.Continue(Ok([#(attr, d.value), ..acc]))
-              False -> {
-                // Check in-flight first, then state
-                let in_flight =
-                  list.find(tx_datoms, fn(td) {
-                    td.entity == d.entity
-                    && td.attribute == attr
-                    && td.operation == fact.Assert
-                  })
-                case in_flight {
-                  Ok(ifd) -> list.Continue(Ok([#(attr, ifd.value), ..acc]))
-                  Error(_) -> {
-                    case
-                      index.get_datoms_by_entity_attr(
-                        state.eavt,
-                        d.entity,
-                        attr,
-                      )
-                      |> list.filter(fn(d) { d.operation == fact.Assert })
-                    {
-                      [existing_d, ..] ->
-                        list.Continue(Ok([#(attr, existing_d.value), ..acc]))
-                      [] ->
-                        list.Stop(Error(
-                          "Missing attribute for composite: " <> attr,
-                        ))
-                    }
-                  }
-                }
-              }
-            }
-          })
-
-        case current_values {
-          Ok(vs) -> {
-            let len_vs = list.length(vs)
-            let len_attrs = list.length(attrs)
-            case len_vs == len_attrs {
-              True -> {
-                // Generic composite uniqueness check
-                let entities_per_attr =
-                  list.map(vs, fn(pair) {
-                    let in_db =
-                      index.get_datoms_by_val(state.aevt, pair.0, pair.1)
-                      |> list.map(fn(datom) { datom.entity })
-                    let in_flight =
-                      list.filter(tx_datoms, fn(td) {
-                        td.attribute == pair.0
-                        && td.value == pair.1
-                        && td.operation == fact.Assert
-                      })
-                      |> list.map(fn(td) { td.entity })
-                    list.unique(list.append(in_db, in_flight))
-                  })
-
-                let common_entities = case entities_per_attr {
-                  [first, ..rest] ->
-                    list.fold(rest, first, fn(acc, eids) {
-                      list.filter(acc, fn(eid) { list.contains(eids, eid) })
-                    })
-                  [] -> []
-                }
-
-                let violation =
-                  list.filter(common_entities, fn(e) { e != d.entity })
-                case violation {
-                  [] -> list.Continue(Ok(Nil))
-                  _ ->
-                    list.Stop(Error(
-                      "Composite uniqueness violation: "
-                      <> string.inspect(list.sort(attrs, string.compare)),
-                    ))
-                }
-              }
-              False -> list.Continue(Ok(Nil))
-            }
-          }
-          _ -> list.Continue(Ok(Nil))
-        }
-      })
     }
     Error(e) -> Error(e)
   }
@@ -588,78 +401,7 @@ fn handle_message(
       actor.continue(state.DbState(..state, query_history: trimmed))
     }
     Tick -> {
-      let current_tx = state.latest_tx
-      // Evict anything older than the retention batch size window
-      let cut_off = current_tx - state.config.batch_size
-
-      let disk_attrs =
-        dict.to_list(state.schema)
-        |> list.filter(fn(item) {
-          let #(_, config) = item
-          config.tier == fact.Disk
-        })
-        |> list.map(fn(item) { item.0 })
-
-      let #(new_eavt, new_aevt, new_avet) =
-        list.fold(
-          disk_attrs,
-          #(state.eavt, state.aevt, state.avet),
-          fn(acc, attr) {
-            let #(acc_eavt, acc_aevt, acc_avet) = acc
-            let cold =
-              index.get_cold_datoms(acc_eavt, cut_off)
-              |> list.filter(fn(d: fact.Datom) { d.attribute == attr })
-
-            case cold {
-              [] -> acc
-              _ -> {
-                let _ = storage.append(state.adapter, cold)
-
-                // Move to ETS if available
-                case state.ets_name {
-                  Some(name) -> {
-                    list.each(cold, fn(d) {
-                      let _ =
-                        ets_index.insert_datom(name <> "_eavt", d.entity, d)
-                      let _ =
-                        ets_index.insert_datom(name <> "_aevt", d.attribute, d)
-                    })
-                  }
-                  None -> Nil
-                }
-
-                let next_eavt = index.evict_from_memory(acc_eavt, cold)
-                let next_aevt =
-                  list.fold(cold, acc_aevt, fn(a, d) { index.delete_aevt(a, d) })
-                let next_avet =
-                  list.fold(cold, acc_avet, fn(a, d) { index.delete_avet(a, d) })
-                #(next_eavt, next_aevt, next_avet)
-              }
-            }
-          },
-        )
-
-      // Predictive Prefetching
-      case state.config.prefetch_enabled {
-        True -> {
-          let _hot_attrs = prefetch.analyze_history(state.query_history)
-          case state.ets_name {
-            Some(_name) -> {
-              // In a fully flushed out system, we would query the StorageAdapter or Mnesia 
-              // here for `hot_attrs` and bulk-insert them into the ETS caches if not present.
-              // For this milestone, identifying the hot attributes via the heuristic is sufficient
-              // to prove the predictive prefetching architecture works on the BEAM.
-              Nil
-            }
-            None -> Nil
-          }
-        }
-        False -> Nil
-      }
-
-      actor.continue(
-        state.DbState(..state, eavt: new_eavt, aevt: new_aevt, avet: new_avet),
-      )
+      actor.continue(lifecycle.handle_tick(state))
     }
     Boot(ets_name, _store, reply) -> {
       case ets_name {
@@ -669,15 +411,15 @@ fn handle_message(
       // Initialize Mnesia
       let _ = mnesia.init_mnesia()
 
-      let new_state = recover_state(state)
+      let new_state = runtime.recover_state(state)
       process.send(reply, Nil)
       actor.continue(new_state)
     }
     Transact(facts, vt, reply_to) -> {
-      do_handle_transact(state, facts, vt, fact.Assert, reply_to)
+      runtime.do_handle_transact(state, facts, vt, fact.Assert, reply_to, compute_next_state)
     }
     Retract(facts, vt, reply_to) -> {
-      do_handle_transact(state, facts, vt, fact.Retract, reply_to)
+      runtime.do_handle_transact(state, facts, vt, fact.Retract, reply_to, compute_next_state)
     }
     RetractEntity(eid, reply_to) -> {
       let datoms = case state.ets_name {
@@ -686,69 +428,25 @@ fn handle_message(
       }
       let facts =
         list.map(datoms, fn(d) { #(fact.Uid(d.entity), d.attribute, d.value) })
-      do_handle_transact(state, facts, option.None, fact.Retract, reply_to)
+      runtime.do_handle_transact(state, facts, option.None, fact.Retract, reply_to, compute_next_state)
     }
     GetState(reply_to) -> {
       process.send(reply_to, state)
       actor.continue(state)
     }
     SetSchema(attr, config, reply_to) -> {
-      // Validation for making non-unique unique: check existing data
       let error = case config.unique {
-        True -> {
-          let datoms =
-            index.filter_by_attribute(state.aevt, attr)
-            |> list.filter(fn(d) { d.operation == fact.Assert })
-          let val_map =
-            list.fold(datoms, dict.new(), fn(acc, d) {
-              let existing = dict.get(acc, d.value) |> result.unwrap([])
-              dict.insert(acc, d.value, [d.entity, ..existing])
-            })
-          let has_dupes =
-            dict.fold(val_map, False, fn(acc, _, eids) {
-              acc || list.length(list.unique(eids)) > 1
-            })
-          case has_dupes {
-            True ->
-              Some(
-                "Cannot make non-unique attribute unique: existing data has duplicates",
-              )
-            False -> None
-          }
-        }
+        True -> schema.validate_unique(state, attr)
         False -> None
       }
-
       let error = case error {
-        None -> {
+        None ->
           case config.cardinality == fact.One {
-            True -> {
-              let datoms =
-                index.filter_by_attribute(state.aevt, attr)
-                |> list.filter(fn(d) { d.operation == fact.Assert })
-              let ent_map =
-                list.fold(datoms, dict.new(), fn(acc, d) {
-                  let existing = dict.get(acc, d.entity) |> result.unwrap([])
-                  dict.insert(acc, d.entity, [d.value, ..existing])
-                })
-              let has_multi =
-                dict.fold(ent_map, False, fn(acc, _, vals) {
-                  acc || list.length(list.unique(vals)) > 1
-                })
-              case has_multi {
-                True ->
-                  Some(
-                    "Cannot set cardinality to ONE: existing entities have multiple values",
-                  )
-                False -> None
-              }
-            }
+            True -> schema.validate_cardinality_one(state, attr)
             False -> None
           }
-        }
         Some(e) -> Some(e)
       }
-
       case error {
         Some(e) -> {
           process.send(reply_to, Error(e))
@@ -772,35 +470,7 @@ fn handle_message(
       actor.continue(state.DbState(..state, predicates: new_preds))
     }
     RegisterComposite(attrs, reply_to) -> {
-      // Check for violations in existing data
-      let has_violations = {
-        let entity_map =
-          list.fold(attrs, dict.new(), fn(acc, attr) {
-            let datoms =
-              index.filter_by_attribute(state.aevt, attr)
-              |> list.filter(fn(d) { d.operation == fact.Assert })
-            list.fold(datoms, acc, fn(acc2, d) {
-              let existing = dict.get(acc2, d.entity) |> result.unwrap([])
-              dict.insert(acc2, d.entity, [#(attr, d.value), ..existing])
-            })
-          })
-        let entity_pairs =
-          dict.to_list(entity_map)
-          |> list.filter(fn(item) { list.length(item.1) == list.length(attrs) })
-
-        list.any(entity_pairs, fn(p1) {
-          list.any(entity_pairs, fn(p2) {
-            p1.0 != p2.0
-            && list.all(attrs, fn(a) {
-              let v1 = list.key_find(p1.1, a)
-              let v2 = list.key_find(p2.1, a)
-              v1 == v2
-            })
-          })
-        })
-      }
-
-      case has_violations {
+      case schema.validate_composite(state, attrs) {
         True -> {
           process.send(
             reply_to,
@@ -854,272 +524,6 @@ fn handle_message(
   }
 }
 
-fn do_handle_transact(
-  state: state.DbState,
-  facts: List(fact.Fact),
-  valid_time: Option(Int),
-  op: fact.Operation,
-  reply: process.Subject(Result(state.DbState, String)),
-) -> actor.Next(state.DbState, Message) {
-  case compute_next_state(state, facts, valid_time, op) {
-    Ok(#(final_state, datoms)) -> {
-      let _ = storage.insert(final_state.adapter, datoms)
-
-      // Notify subscribers and reactive
-      let changed_attrs =
-        list.map(datoms, fn(d) { d.attribute }) |> list.unique()
-      process.send(
-        state.reactive_actor,
-        state.Notify(changed_attrs, final_state),
-      )
-      list.each(state.subscribers, fn(sub) { process.send(sub, datoms) })
-
-      process.send(reply, Ok(final_state))
-      actor.continue(final_state)
-    }
-    Error(e) -> {
-      process.send(reply, Error(e))
-      actor.continue(state)
-    }
-  }
-}
-
-fn apply_datom(
-  state: state.DbState,
-  d: fact.Datom,
-  tx_idx_counter: Int,
-) -> #(state.DbState, List(fact.Datom), Int) {
-  let config =
-    dict.get(state.schema, d.attribute)
-    |> result.unwrap(fact.AttributeConfig(
-      unique: False,
-      component: False,
-      retention: fact.All,
-      cardinality: fact.Many,
-      check: None,
-      composite_group: None,
-      layout: fact.Row,
-      tier: fact.Memory,
-      eviction: fact.AlwaysInMemory,
-    ))
-
-  // Handle component cascade
-  let #(state_after_cascade, cascade_datoms, cascade_idx) = case
-    config.component && d.operation == fact.Retract
-  {
-    True -> {
-      let children = case d.value {
-        fact.Ref(eid) -> [eid]
-        fact.Int(eid_int) -> [fact.EntityId(eid_int)]
-        _ -> []
-      }
-      list.fold(children, #(state, [], tx_idx_counter), fn(acc, child_eid) {
-        let #(curr_state, curr_datoms, idx) = acc
-        let child_datoms = index.filter_by_entity(curr_state.eavt, child_eid)
-        list.fold(child_datoms, #(curr_state, curr_datoms, idx), fn(acc2, cd) {
-          let #(s2, d2, i2) = acc2
-          let r_d =
-            fact.Datom(..cd, operation: fact.Retract, tx: d.tx, tx_index: i2)
-          #(update_indices(s2, r_d), [r_d, ..d2], i2 + 1)
-        })
-      })
-    }
-    False -> #(state, [], tx_idx_counter)
-  }
-
-  // Handle cardinality one
-  let #(state_after_card, card_datoms, card_idx) = case
-    config.cardinality == fact.One && d.operation == fact.Assert
-  {
-    True -> {
-      let all_datoms =
-        index.get_datoms_by_entity_attr(
-          state_after_cascade.eavt,
-          d.entity,
-          d.attribute,
-        )
-      let asserts =
-        list.filter(all_datoms, fn(d) { d.operation == fact.Assert })
-      let retractions =
-        list.filter(all_datoms, fn(d) { d.operation == fact.Retract })
-
-      let active_asserts =
-        list.filter(asserts, fn(ad) {
-          !list.any(retractions, fn(rd) {
-            rd.value == ad.value && rd.tx >= ad.tx
-          })
-        })
-
-      list.fold(
-        active_asserts,
-        #(state_after_cascade, [], cascade_idx),
-        fn(acc, old_d) {
-          let #(s, ds, i) = acc
-          let r_d =
-            fact.Datom(..old_d, operation: fact.Retract, tx: d.tx, tx_index: i)
-          #(update_indices(s, r_d), [r_d, ..ds], i + 1)
-        },
-      )
-    }
-    False -> #(state_after_cascade, [], cascade_idx)
-  }
-
-  // Handle retention policy
-  let state_after_retention = case
-    config.retention == fact.LatestOnly && d.operation == fact.Assert
-  {
-    True -> {
-      let existing =
-        index.get_datoms_by_entity_attr(
-          state_after_card.eavt,
-          d.entity,
-          d.attribute,
-        )
-      list.fold(existing, state_after_card, fn(acc, old_d) {
-        state.DbState(..acc, eavt: index.evict_from_memory(acc.eavt, [old_d]))
-      })
-    }
-    False -> state_after_card
-  }
-
-  let d_with_idx = fact.Datom(..d, tx_index: card_idx)
-
-  let final_state = update_indices(state_after_retention, d_with_idx)
-  #(
-    final_state,
-    list.append(list.append(cascade_datoms, card_datoms), [d_with_idx]),
-    card_idx + 1,
-  )
-}
-
-fn update_indices(state: state.DbState, d: fact.Datom) -> state.DbState {
-  // Stateful Index Updates
-  let art_index = art.insert(state.art_index, d.value, d.entity)
-
-  let vec_index = case d.value {
-    fact.Vec(v) -> {
-      case d.operation {
-        fact.Assert -> vec_index.insert(state.vec_index, d.entity, v)
-        fact.Retract -> state.vec_index
-      }
-    }
-    _ -> state.vec_index
-  }
-
-  let columnar_store = case d.operation {
-    fact.Assert -> {
-      let chunks =
-        dict.get(state.columnar_store, d.attribute) |> result.unwrap([])
-      case chunks {
-        [] -> {
-          let chunk =
-            internal.StorageChunk(
-              attribute: d.attribute,
-              values: internal.Leaf([d.value]),
-              max_tx: 0,
-              is_compressed: False,
-            )
-          dict.insert(state.columnar_store, d.attribute, [chunk])
-        }
-        [last, ..rest] -> {
-          let updated = case last.values {
-            internal.Leaf(l) -> internal.Leaf(list.append(l, [d.value]))
-            node -> node
-          }
-          dict.insert(state.columnar_store, d.attribute, [
-            internal.StorageChunk(..last, values: updated),
-            ..rest
-          ])
-        }
-      }
-    }
-    _ -> state.columnar_store
-  }
-
-  // Always update core indices in memory for engine compatibility
-  let new_eavt = index.insert_eavt(state.eavt, d, fact.All)
-  let new_aevt = index.insert_aevt(state.aevt, d, fact.All)
-  let new_avet = index.insert_avet(state.avet, d)
-
-  let state =
-    state.DbState(
-      ..state,
-      eavt: new_eavt,
-      aevt: new_aevt,
-      avet: new_avet,
-      art_index: art_index,
-      vec_index: vec_index,
-      columnar_store: columnar_store,
-    )
-
-  case state.ets_name {
-    Some(name) -> {
-      let _ = ets_index.insert_datom(name <> "_eavt", d.entity, d)
-      let _ = ets_index.insert_datom(name <> "_aevt", d.attribute, d)
-      let avet_table = name <> "_avet"
-      case d.operation {
-        fact.Assert ->
-          ets_index.insert_avet(avet_table, #(d.attribute, d.value), d.entity)
-        fact.Retract -> ets_index.delete(avet_table, #(d.attribute, d.value))
-      }
-      state
-    }
-    None -> state
-  }
-}
-
-fn resolve_transaction_functions(
-  state: state.DbState,
-  tx_id: Int,
-  vt: Int,
-  facts: List(fact.Fact),
-) -> List(fact.Fact) {
-  list.flat_map(facts, fn(f) {
-    case f.0 {
-      fact.Lookup(lu) -> {
-        let #(a, v) = lu
-        case a == "db/fn" {
-          True -> {
-            let func_name = case v {
-              fact.Str(s) -> s
-              _ -> fact.to_string(v)
-            }
-            // Resolve transaction function if it exists
-            case dict.get(state.functions, func_name) {
-              Ok(func) -> {
-                let args = case f.2 {
-                  fact.List(l) -> l
-                  _ -> []
-                }
-                func(state, tx_id, vt, args)
-              }
-              Error(_) -> [f]
-            }
-          }
-          False -> [f]
-        }
-      }
-      _ -> {
-        case f.2 {
-          fact.List([fact.Str("db/id"), ..]) -> [#(f.0, f.1, fact.Int(tx_id))]
-          _ -> [f]
-        }
-      }
-    }
-  })
-}
-
-fn recover_state(state: state.DbState) -> state.DbState {
-  case storage.read_all(state.adapter) {
-    Ok(datoms) -> {
-      list.fold(datoms, state, fn(acc, d) {
-        let #(s, _, _) = apply_datom(acc, d, d.tx_index)
-        s
-      })
-    }
-    Error(_) -> state
-  }
-}
 
 pub fn subscribe(
   subj: process.Subject(Message),

@@ -1,5 +1,7 @@
 # Cognitive Memory & Semantic Retrieval
 
+> **Maturity: Experimental.** The cognitive clause is implemented and tested, but the full ACT-R decay and Hebbian learning lifecycle is still maturing. See `docs/feature_maturity.md`.
+
 AaronDB provides a paradigm shift by merging deductive logic (Datalog) with
 inductive, associative memory (Cognitive Models) naturally in the database
 querying language.

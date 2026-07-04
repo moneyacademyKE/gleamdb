@@ -1,6 +1,5 @@
 import aarondb
 import aarondb/auth
-import aarondb/fact.{Str}
 import aarondb/mcp/server
 import gleam/dynamic/decode
 import gleam/json
@@ -11,7 +10,7 @@ pub fn mcp_security_test() {
   let db = aarondb.new()
 
   // Generate a valid capability token with Write access but no Read access
-  let valid_write_token =
+  let _valid_write_token =
     auth.Token(
       id: "test-token-write",
       capabilities: [auth.Capability(auth.Write, auth.All)],

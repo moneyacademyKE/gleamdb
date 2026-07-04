@@ -1,6 +1,6 @@
 import aarondb
 import aarondb/fact.{Int}
-import aarondb/shared/ast.{type Rule, Rule} as types
+import aarondb/shared/ast.{Rule} as types
 import gleam/dict
 import gleam/list
 import gleam/result

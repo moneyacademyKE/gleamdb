@@ -20,4 +20,7 @@ The engine refactor worked because each extraction preserved behavior and ran th
 ## 6. Separate Planning From Execution
 The solver redesign introduced explicit planner and executor phases without rewriting clause semantics. `engine/planner.gleam` owns optimized query shape and top-level result shaping. `engine/executor.gleam` owns clause iteration and delegates solving through a callback. `engine/solver_context.gleam` makes the execution basis explicit, reducing argument sprawl while preserving the tested behavior of the existing solver.
 
+## 7. Know When the Remaining Core Is the Architecture
+After the later extractions, the largest remaining files are the true core: the query solver loop in `engine.gleam` and the actor message handler in `transactor.gleam`. Further splitting is still possible, but it is no longer mechanical extraction. It would require redesigning the solver protocol and the actor boundary more deeply. That line matters: once the residual file is mostly orchestration plus mutually recursive control flow, treating it as a design problem is safer than pretending it is still a simple module split.
+
 These principles ensure that our test coverage does not become a tightly-coupled burden, but rather a flexible verification of independent state transformations.

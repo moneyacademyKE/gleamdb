@@ -6,7 +6,6 @@ import aarondb/index
 import aarondb/index/art
 import aarondb/q
 import aarondb/raft
-import aarondb/shared/ast
 import aarondb/shared/state as types
 import aarondb/storage
 import aarondb/vec_index
