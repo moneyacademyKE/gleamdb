@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.4 - 2026-07-04
+
+### Changed
+
+- GitHub Actions workflows now use OTP `27`, matching the runtime requirement of the current dependency graph.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures, no warnings.
+- Release workflow configured with current Gleam, OTP 27, rebar3, and `HEX_API_KEY` for autonomous Hex publishing.
+
 ## 2.4.3 - 2026-07-04
 
 ### Changed
