@@ -1,33 +1,35 @@
 import aarondb/algo/aggregate
 import aarondb/algo/cracking
-import aarondb/algo/graph
 import aarondb/algo/vectorized
+import aarondb/engine/cognitive
+import aarondb/engine/entity
+import aarondb/engine/executor
+import aarondb/engine/graph_clauses
 import aarondb/engine/morsel
 import aarondb/engine/navigator
+import aarondb/engine/predicate
+import aarondb/engine/planner
+import aarondb/engine/retrieval
+import aarondb/engine/solver_context
+import aarondb/engine/string_clause
+import aarondb/engine/traversal
+import aarondb/engine/virtual
 import aarondb/fact
 import aarondb/index
-import aarondb/index/art
 import aarondb/index/ets as ets_index
 import aarondb/shared/ast
-import aarondb/shared/columnar
 import aarondb/shared/query_types
 import aarondb/shared/state
 import aarondb/storage
 import aarondb/storage/internal
 
-import aarondb/shared/optimizer
-import aarondb/vec_index
-import aarondb/vector
 import gleam/dict.{type Dict}
 import gleam/erlang/process
-import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/order
 import gleam/result
 import gleam/set.{type Set}
-import gleam/string
 
 // Rule moved to types.gleam to avoid cycle
 
@@ -48,11 +50,18 @@ pub fn run(
   }
   let all_rules = list.append(rules, db_state.stored_rules)
   let all_derived = derive_all_facts(db_state, all_rules, as_of_tx, as_of_v)
+  let solver =
+    solver_context.SolverContext(
+      db_state: db_state,
+      rules: all_rules,
+      derived: all_derived,
+      as_of_tx: as_of_tx,
+      as_of_valid: as_of_v,
+    )
   let initial_context = [dict.new()]
 
-  // Logical Navigator: Plan the query before execution
-  let query = optimizer.optimize(query)
-  let planned_clauses = query.where
+  let plan = planner.build(query)
+  let planned_clauses = plan.clauses
 
   // [Dogfood Learning] Graph Type Safety: check if graph edges are Refs
   list.each(planned_clauses, fn(c) {
@@ -80,100 +89,15 @@ pub fn run(
     }
   })
 
-  let #(rows, store) =
-    list.fold(planned_clauses, #(initial_context, None), fn(acc, clause) {
-      let #(contexts, current_store) = acc
-      case clause {
-        ast.LimitClause(n) -> #(list.take(contexts, n), current_store)
-        ast.OffsetClause(n) -> #(list.drop(contexts, n), current_store)
-        ast.OrderByClause(var, dir) -> {
-          let sorted =
-            list.sort(contexts, fn(a, b) {
-              let val_a = dict.get(a, var) |> result.unwrap(fact.Int(0))
-              let val_b = dict.get(b, var) |> result.unwrap(fact.Int(0))
-              let ord = fact.compare(val_a, val_b)
-              case dir {
-                ast.Asc -> ord
-                ast.Desc ->
-                  case ord {
-                    order.Lt -> order.Gt
-                    order.Gt -> order.Lt
-                    order.Eq -> order.Eq
-                  }
-              }
-            })
-          #(sorted, current_store)
-        }
-        ast.GroupBy(_) -> #(contexts, current_store)
-        ast.Filter(expr) -> {
-          // JIT-Lite: Compile the predicate once per query clause execution
-          let compiled_pred = compile_predicate(expr)
-          let next_contexts =
-            list.filter(contexts, fn(ctx) { compiled_pred(ctx) })
-          #(next_contexts, current_store)
-        }
-        _ -> {
-          let #(next_contexts, next_store) =
-            list.fold(contexts, #([], current_store), fn(inner_acc, ctx) {
-              let #(acc_ctxs, acc_store) = inner_acc
-              let #(new_ctxs, clause_store) =
-                solve_clause_with_derived(
-                  db_state,
-                  clause,
-                  ctx,
-                  all_derived,
-                  as_of_tx,
-                  as_of_v,
-                )
-              let merged_store = merge_optional_stores(acc_store, clause_store)
-              #(list.append(acc_ctxs, new_ctxs), merged_store)
-            })
-          #(next_contexts, next_store)
-        }
-      }
+  let execution =
+    executor.execute(planned_clauses, initial_context, None, fn(clause, ctx, _) {
+      solve_with_context(solver, clause, ctx)
     })
 
-  // Apply top-level pagination and sorting from the Query record
-  let rows = case query.order_by {
-    Some(ast.OrderBy(var, dir)) -> {
-      list.sort(rows, fn(a, b) {
-        let val_a = dict.get(a, var) |> result.unwrap(fact.Int(0))
-        let val_b = dict.get(b, var) |> result.unwrap(fact.Int(0))
-        let ord = fact.compare(val_a, val_b)
-        case dir {
-          ast.Asc -> ord
-          ast.Desc -> {
-            case ord {
-              order.Lt -> order.Gt
-              order.Gt -> order.Lt
-              order.Eq -> order.Eq
-            }
-          }
-        }
-      })
-    }
-    None -> rows
-  }
-
-  let rows = case query.offset {
-    Some(n) -> list.drop(rows, n)
-    None -> rows
-  }
-
-  let rows = case query.limit {
-    Some(n) -> list.take(rows, n)
-    None -> rows
-  }
-
-  let _find_vars = query.find
-
-  let aggregates =
-    list.fold(planned_clauses, dict.new(), fn(acc, clause) {
-      case clause {
-        ast.Aggregate(var, func, _, _) -> dict.insert(acc, var, func)
-        _ -> acc
-      }
-    })
+  let rows =
+    execution.rows
+    |> planner.order_rows(plan.query.order_by)
+    |> planner.page_rows(plan.query.offset, plan.query.limit)
 
   query_types.QueryResult(
     rows: rows |> list.unique(),
@@ -184,9 +108,9 @@ pub fn run(
       index_hits: 0,
       plan: "",
       shard_id: None,
-      aggregates: aggregates,
+      aggregates: plan.aggregates,
     ),
-    updated_columnar_store: store,
+    updated_columnar_store: execution.store,
   )
 }
 
@@ -403,7 +327,7 @@ fn solve_clause(
         _ -> []
       }
       #(
-        solve_similarity(
+        retrieval.similarity(
           db_state,
           var,
           vec,
@@ -428,14 +352,12 @@ fn solve_clause(
         _ -> []
       }
       #(
-        solve_similarity_entity(
+        retrieval.similarity_entity(
           db_state,
           var,
           vec,
           threshold,
           ctx,
-          as_of_tx,
-          as_of_valid,
         ),
         None,
       )
@@ -460,7 +382,7 @@ fn solve_clause(
         ast.Custom(data) -> state.Custom(data)
       }
       #(
-        solve_custom_index(
+        retrieval.custom_index(
           db_state,
           var,
           name,
@@ -474,7 +396,7 @@ fn solve_clause(
       )
     }
     ast.Filter(expr) -> {
-      let compiled_pred = compile_predicate(expr)
+          let compiled_pred = predicate.compile(expr)
       case compiled_pred(ctx) {
         True -> #([ctx], None)
         False -> #([], None)
@@ -493,7 +415,7 @@ fn solve_clause(
       None,
     )
     ast.ShortestPath(from, to, edge, path_var, cost_var, max_depth) -> #(
-      solve_shortest_path(
+      graph_clauses.shortest_path(
         db_state,
         from,
         to,
@@ -506,7 +428,7 @@ fn solve_clause(
       None,
     )
     ast.PageRank(entity_var, edge, rank_var, damping, iterations) -> #(
-      solve_pagerank(
+      graph_clauses.pagerank(
         db_state,
         entity_var,
         edge,
@@ -518,56 +440,74 @@ fn solve_clause(
       None,
     )
     ast.Virtual(pred, args, outputs) -> #(
-      solve_virtual(db_state, pred, args, outputs, ctx),
+      virtual.solve(db_state, pred, args, outputs, ctx),
       None,
     )
     ast.Reachable(from, edge, node_var) -> #(
-      solve_reachable(db_state, from, edge, node_var, ctx),
+      graph_clauses.reachable(db_state, from, edge, node_var, ctx),
       None,
     )
     ast.ConnectedComponents(edge, entity_var, component_var) -> #(
-      solve_connected_components(db_state, edge, entity_var, component_var, ctx),
+      graph_clauses.connected_components(db_state, edge, entity_var, component_var, ctx),
       None,
     )
     ast.Neighbors(from, edge, depth, node_var) -> #(
-      solve_neighbors(db_state, from, edge, depth, node_var, ctx),
+      graph_clauses.neighbors(db_state, from, edge, depth, node_var, ctx),
       None,
     )
     ast.CycleDetect(edge, cycle_var) -> #(
-      solve_cycle_detect(db_state, edge, cycle_var, ctx),
+      graph_clauses.cycle_detect(db_state, edge, cycle_var, ctx),
       None,
     )
     ast.BetweennessCentrality(edge, entity_var, score_var) -> #(
-      solve_betweenness(db_state, edge, entity_var, score_var, ctx),
+      graph_clauses.betweenness(db_state, edge, entity_var, score_var, ctx),
       None,
     )
     ast.TopologicalSort(edge, entity_var, order_var) -> #(
-      solve_topological_sort(db_state, edge, entity_var, order_var, ctx),
+      graph_clauses.topological_sort(db_state, edge, entity_var, order_var, ctx),
       None,
     )
     ast.StronglyConnectedComponents(edge, entity_var, component_var) -> #(
-      solve_strongly_connected(db_state, edge, entity_var, component_var, ctx),
+      graph_clauses.strongly_connected(db_state, edge, entity_var, component_var, ctx),
       None,
     )
     ast.StartsWith(var, prefix) -> #(
-      solve_starts_with(db_state, var, prefix, ctx),
+      string_clause.starts_with(db_state, var, prefix, ctx),
       None,
     )
     ast.Pull(var, entity, pattern) -> {
       case resolve_part(entity, ctx) {
         Some(fact.Ref(eid)) -> {
-          let res = pull(db_state, eid, pattern)
-          #([dict.insert(ctx, var, pull_result_to_value(res))], None)
+          let res = entity.pull(db_state, eid, pattern)
+          #([dict.insert(ctx, var, entity.pull_result_to_value(res))], None)
         }
         Some(fact.Int(eid_int)) -> {
-          let res = pull(db_state, fact.EntityId(eid_int), pattern)
-          #([dict.insert(ctx, var, pull_result_to_value(res))], None)
+          let res = entity.pull(db_state, fact.EntityId(eid_int), pattern)
+          #([dict.insert(ctx, var, entity.pull_result_to_value(res))], None)
         }
         _ -> #([], None)
       }
     }
     _ -> #([ctx], None)
   }
+}
+
+fn solve_with_context(
+  solver: solver_context.SolverContext,
+  clause: ast.BodyClause,
+  ctx: Dict(String, fact.Value),
+) -> #(
+  List(Dict(String, fact.Value)),
+  Option(Dict(String, List(internal.StorageChunk))),
+) {
+  solve_clause_with_derived(
+    solver.db_state,
+    clause,
+    ctx,
+    solver.derived,
+    solver.as_of_tx,
+    solver.as_of_valid,
+  )
 }
 
 fn solve_positive_with_state(
@@ -683,8 +623,8 @@ fn solve_positive_with_state(
 
   let active =
     base_datoms
-    |> filter_by_time(as_of_tx, as_of_valid)
-    |> filter_active(db_state)
+    |> entity.filter_by_time(as_of_tx, as_of_valid)
+    |> entity.filter_active(db_state)
 
   // Morsel-driven execution:
   // If we have contexts to evaluate against, run them through morsel workers
@@ -866,8 +806,8 @@ fn solve_triple_with_derived(
 
   let active =
     all
-    |> filter_by_time(as_of_tx, as_of_valid)
-    |> filter_active(db_state)
+    |> entity.filter_by_time(as_of_tx, as_of_valid)
+    |> entity.filter_active(db_state)
     |> list.filter(fn(d) { d.operation == fact.Assert })
 
   list.map(active, fn(d: fact.Datom) {
@@ -884,70 +824,6 @@ fn solve_triple_with_derived(
       _ -> b
     }
     b
-  })
-}
-
-fn filter_active(
-  datoms: List(fact.Datom),
-  db_state: state.DbState,
-) -> List(fact.Datom) {
-  let latest =
-    list.fold(datoms, dict.new(), fn(acc, d) {
-      let config =
-        dict.get(db_state.schema, d.attribute)
-        |> result.unwrap(fact.AttributeConfig(
-          unique: False,
-          component: False,
-          retention: fact.All,
-          cardinality: fact.Many,
-          check: None,
-          composite_group: None,
-          layout: fact.Row,
-          tier: fact.Memory,
-          eviction: fact.AlwaysInMemory,
-        ))
-
-      let key = case config.cardinality {
-        fact.Many -> #(d.entity, d.attribute, Some(d.value))
-        fact.One -> #(d.entity, d.attribute, None)
-      }
-
-      case dict.get(acc, key) {
-        Ok(#(tx, tx_idx, _op)) -> {
-          case tx > d.tx || { tx == d.tx && tx_idx > d.tx_index } {
-            True -> acc
-            False -> dict.insert(acc, key, #(d.tx, d.tx_index, d.operation))
-          }
-        }
-        _ -> dict.insert(acc, key, #(d.tx, d.tx_index, d.operation))
-      }
-    })
-
-  list.filter(datoms, fn(d: fact.Datom) {
-    let config =
-      dict.get(db_state.schema, d.attribute)
-      |> result.unwrap(fact.AttributeConfig(
-        unique: False,
-        component: False,
-        retention: fact.All,
-        cardinality: fact.Many,
-        check: None,
-        composite_group: None,
-        layout: fact.Row,
-        tier: fact.Memory,
-        eviction: fact.AlwaysInMemory,
-      ))
-
-    let key = case config.cardinality {
-      fact.Many -> #(d.entity, d.attribute, Some(d.value))
-      fact.One -> #(d.entity, d.attribute, None)
-    }
-
-    case dict.get(latest, key) {
-      Ok(#(tx, tx_idx, op)) ->
-        tx == d.tx && tx_idx == d.tx_index && op == fact.Assert
-      _ -> False
-    }
   })
 }
 
@@ -978,11 +854,8 @@ fn resolve_part_optional(
 }
 
 fn do_solve_clauses(
-  db_state: state.DbState,
+  solver: solver_context.SolverContext,
   clauses: List(ast.BodyClause),
-  rules: List(ast.Rule),
-  as_of_tx: Option(Int),
-  as_of_valid: Option(Int),
   contexts: List(Dict(String, fact.Value)),
   initial_store: Option(Dict(String, List(internal.StorageChunk))),
 ) -> #(
@@ -993,7 +866,7 @@ fn do_solve_clauses(
     [] -> #(contexts, initial_store)
     [first, ..rest] -> {
       let #(next_contexts, next_store) = case
-        list.length(contexts) > db_state.config.parallel_threshold
+        list.length(contexts) > solver.db_state.config.parallel_threshold
       {
         True -> {
           // Parallel path
@@ -1004,12 +877,12 @@ fn do_solve_clauses(
                 let #(acc_ctxs, acc_store) = acc
                 let #(new_ctxs, clause_store) =
                   solve_clause(
-                    db_state,
+                    solver.db_state,
                     first,
                     ctx,
-                    rules,
-                    as_of_tx,
-                    as_of_valid,
+                    solver.rules,
+                    solver.as_of_tx,
+                    solver.as_of_valid,
                   )
                 #(
                   list.append(acc_ctxs, new_ctxs),
@@ -1025,7 +898,14 @@ fn do_solve_clauses(
           list.fold(contexts, #([], initial_store), fn(acc, ctx) {
             let #(acc_ctxs, acc_store) = acc
             let #(new_ctxs, clause_store) =
-              solve_clause(db_state, first, ctx, rules, as_of_tx, as_of_valid)
+              solve_clause(
+                solver.db_state,
+                first,
+                ctx,
+                solver.rules,
+                solver.as_of_tx,
+                solver.as_of_valid,
+              )
             #(
               list.append(acc_ctxs, new_ctxs),
               merge_optional_stores(acc_store, clause_store),
@@ -1034,11 +914,8 @@ fn do_solve_clauses(
         }
       }
       do_solve_clauses(
-        db_state,
+        solver,
         rest,
-        rules,
-        as_of_tx,
-        as_of_valid,
         next_contexts,
         next_store,
       )
@@ -1127,11 +1004,14 @@ fn solve_aggregate(
         _ -> {
           let target_values =
             get_aggregate_values_row_based(
-              db_state,
+              solver_context.SolverContext(
+                db_state: db_state,
+                rules: rules,
+                derived: set.new(),
+                as_of_tx: as_of_tx,
+                as_of_valid: as_of_valid,
+              ),
               clauses,
-              rules,
-              as_of_tx,
-              as_of_valid,
               ctx,
               target_var,
             )
@@ -1157,11 +1037,14 @@ fn solve_aggregate(
       // Row-based or with filters
       let target_values =
         get_aggregate_values_row_based(
-          db_state,
+          solver_context.SolverContext(
+            db_state: db_state,
+            rules: rules,
+            derived: set.new(),
+            as_of_tx: as_of_tx,
+            as_of_valid: as_of_valid,
+          ),
           clauses,
-          rules,
-          as_of_tx,
-          as_of_valid,
           ctx,
           target_var,
         )
@@ -1174,11 +1057,8 @@ fn solve_aggregate(
 }
 
 fn get_aggregate_values_row_based(
-  db_state: state.DbState,
+  solver: solver_context.SolverContext,
   clauses: List(ast.BodyClause),
-  rules: List(ast.Rule),
-  as_of_tx: Option(Int),
-  as_of_valid: Option(Int),
   ctx: Dict(String, fact.Value),
   target_var: String,
 ) -> List(fact.Value) {
@@ -1186,11 +1066,8 @@ fn get_aggregate_values_row_based(
     [] -> #([ctx], None)
     _ ->
       do_solve_clauses(
-        db_state,
+        solver,
         clauses,
-        rules,
-        as_of_tx,
-        as_of_valid,
         [ctx],
         None,
       )
@@ -1199,100 +1076,11 @@ fn get_aggregate_values_row_based(
   list.filter_map(sub_results, fn(res) { dict.get(res, target_var) })
 }
 
-fn solve_similarity(
-  db_state: state.DbState,
-  var: String,
-  vec: List(Float),
-  threshold: Float,
-  ctx: Dict(String, fact.Value),
-  as_of_tx: Option(Int),
-  as_of_valid: Option(Int),
-) -> List(Dict(String, fact.Value)) {
-  case dict.get(ctx, var) {
-    Ok(fact.Vec(v)) -> {
-      let dist =
-        vector.cosine_similarity(vector.normalize(vec), vector.normalize(v))
-      case dist >=. threshold {
-        True -> [ctx]
-        False -> []
-      }
-    }
-    // If bound but NOT a vector, it can't match.
-    Ok(_) -> []
-    // Similarity as a SOURCE clause (Unbound variable)
-    // Use NSW vec_index for O(log N) search, fallback to AVET if empty.
-    Error(Nil) -> {
-      case vec_index.size(db_state.vec_index) > 0 {
-        True -> {
-          // Use graph-accelerated ANN search
-          let norm_vec = vector.normalize(vec)
-          let results =
-            vec_index.search(db_state.vec_index, norm_vec, threshold, 100)
-          list.filter_map(results, fn(r) {
-            // Find the actual datom value to ensure join compatibility
-            // Filter by time and activity
-            case
-              index.filter_by_entity(db_state.eavt, r.entity)
-              |> filter_by_time(as_of_tx, as_of_valid)
-              |> filter_active(db_state)
-              |> list.filter(fn(d: fact.Datom) {
-                case d.value {
-                  fact.Vec(_) -> d.operation == fact.Assert
-                  _ -> False
-                }
-              })
-            {
-              [d, ..] -> Ok(dict.insert(ctx, var, d.value))
-              [] -> Error(Nil)
-            }
-          })
-        }
-        False -> {
-          // Fallback: brute-force AVET scan
-          let matching_datoms =
-            index.get_all_datoms_avet(db_state.avet)
-            |> filter_by_time(as_of_tx, as_of_valid)
-            |> filter_active(db_state)
-            |> list.filter_map(fn(d: fact.Datom) {
-              case d.value {
-                fact.Vec(v) -> {
-                  let dist = vector.cosine_similarity(vec, v)
-                  case dist >=. threshold {
-                    True -> Ok(d)
-                    False -> Error(Nil)
-                  }
-                }
-                _ -> Error(Nil)
-              }
-            })
-
-          list.map(matching_datoms, fn(d: fact.Datom) {
-            dict.insert(ctx, var, d.value)
-          })
-        }
-      }
-    }
-  }
-}
-
 pub fn entity_history(
   db_state: state.DbState,
   eid: fact.EntityId,
 ) -> List(fact.Datom) {
-  dict.get(db_state.eavt, eid)
-  |> result.unwrap([])
-  |> list.sort(fn(a, b) {
-    case int.compare(a.tx, b.tx) {
-      order.Eq -> {
-        case a.operation, b.operation {
-          fact.Retract, fact.Assert -> order.Lt
-          fact.Assert, fact.Retract -> order.Gt
-          _, _ -> order.Eq
-        }
-      }
-      other -> other
-    }
-  })
+  entity.entity_history(db_state, eid)
 }
 
 pub fn pull(
@@ -1300,157 +1088,11 @@ pub fn pull(
   eid: fact.EntityId,
   pattern: ast.PullPattern,
 ) -> query_types.PullResult {
-  let id = eid
-
-  let datoms = case db_state.ets_name {
-    Some(name) -> ets_index.lookup_datoms(name <> "_eavt", id)
-    None -> index.filter_by_entity(db_state.eavt, id) |> list.reverse()
-  }
-
-  case list.length(datoms) > db_state.config.zero_copy_threshold {
-    True -> {
-      case db_state.ets_name {
-        Some(name) -> {
-          let assert Ok(bin) = ets_index.get_raw_binary(name <> "_eavt", id)
-          query_types.PullRawBinary(bin)
-        }
-        None -> {
-          query_types.PullRawBinary(ets_index.serialize_term(datoms))
-        }
-      }
-    }
-    False -> {
-      let datoms = filter_active(datoms, db_state)
-      let m =
-        list.fold(pattern, dict.new(), fn(acc, item) {
-          case item {
-            ast.Wildcard -> {
-              list.fold(datoms, acc, fn(inner_acc, d: fact.Datom) {
-                dict.insert(
-                  inner_acc,
-                  d.attribute,
-                  query_types.PullSingle(d.value),
-                )
-              })
-            }
-            ast.Attr(name) -> {
-              let values =
-                list.filter(datoms, fn(d: fact.Datom) { d.attribute == name })
-                |> list.map(fn(d) { d.value })
-              case values {
-                [v] -> dict.insert(acc, name, query_types.PullSingle(v))
-                [_, ..] -> dict.insert(acc, name, query_types.PullMany(values))
-                [] -> acc
-              }
-            }
-            ast.Except(exclusions) -> {
-              list.fold(datoms, acc, fn(inner_acc, d: fact.Datom) {
-                case list.contains(exclusions, d.attribute) {
-                  True -> inner_acc
-                  False ->
-                    dict.insert(
-                      inner_acc,
-                      d.attribute,
-                      query_types.PullSingle(d.value),
-                    )
-                }
-              })
-            }
-            ast.PullRecursion(attr, depth) -> {
-              case depth <= 0 {
-                True -> acc
-                False -> {
-                  let values =
-                    list.filter(datoms, fn(d: fact.Datom) {
-                      d.attribute == attr
-                    })
-                    |> list.map(fn(d) { d.value })
-                  let results =
-                    list.map(values, fn(v) {
-                      case v {
-                        fact.Ref(next_id) -> {
-                          pull(db_state, next_id, [
-                            ast.Wildcard,
-                            ast.PullRecursion(attr, depth - 1),
-                          ])
-                        }
-                        fact.Int(next_id_int) -> {
-                          pull(db_state, fact.EntityId(next_id_int), [
-                            ast.Wildcard,
-                            ast.PullRecursion(attr, depth - 1),
-                          ])
-                        }
-                        _ -> query_types.PullSingle(v)
-                      }
-                    })
-                  case results {
-                    [r] -> dict.insert(acc, attr, r)
-                    [_, ..] ->
-                      dict.insert(
-                        acc,
-                        attr,
-                        query_types.PullNestedMany(results),
-                      )
-                    [] -> acc
-                  }
-                }
-              }
-            }
-            ast.Nested(name, sub_pattern) -> {
-              let values =
-                list.filter(datoms, fn(d: fact.Datom) { d.attribute == name })
-                |> list.map(fn(d) { d.value })
-              case values {
-                [fact.Ref(eid)] -> {
-                  let res = pull(db_state, eid, sub_pattern)
-                  dict.insert(acc, name, res)
-                }
-                [fact.Int(sub_id)] -> {
-                  let res = pull(db_state, fact.EntityId(sub_id), sub_pattern)
-                  dict.insert(acc, name, res)
-                }
-                [_, ..] -> {
-                  let res_list =
-                    list.map(values, fn(v) {
-                      case v {
-                        fact.Ref(eid) -> pull(db_state, eid, sub_pattern)
-                        fact.Int(sub_id) ->
-                          pull(db_state, fact.EntityId(sub_id), sub_pattern)
-                        _ -> query_types.PullSingle(v)
-                      }
-                    })
-                  case res_list {
-                    [r] -> dict.insert(acc, name, r)
-                    [_, ..] ->
-                      dict.insert(
-                        acc,
-                        name,
-                        query_types.PullNestedMany(res_list),
-                      )
-                    _ -> acc
-                  }
-                }
-                _ -> acc
-              }
-            }
-          }
-        })
-      query_types.PullMap(m)
-    }
-  }
+  entity.pull(db_state, eid, pattern)
 }
 
 pub fn pull_result_to_value(res: query_types.PullResult) -> fact.Value {
-  case res {
-    query_types.PullSingle(v) -> v
-    query_types.PullMany(vs) -> fact.List(vs)
-    query_types.PullNestedMany(res_list) ->
-      fact.List(list.map(res_list, pull_result_to_value))
-    query_types.PullMap(m) -> {
-      fact.Map(dict.map_values(m, fn(_, v) { pull_result_to_value(v) }))
-    }
-    query_types.PullRawBinary(bin) -> fact.Blob(bin)
-  }
+  entity.pull_result_to_value(res)
 }
 
 pub fn traverse(
@@ -1459,79 +1101,7 @@ pub fn traverse(
   expr: query_types.TraversalExpr,
   max_depth: Int,
 ) -> Result(List(fact.Value), String) {
-  case list.length(expr) > max_depth {
-    True -> Error("DepthLimitExceeded")
-    False -> {
-      let result_eids = do_traverse(db_state, [start_id], expr)
-      Ok(list.map(result_eids, fn(id) { fact.Ref(fact.EntityId(id)) }))
-    }
-  }
-}
-
-fn do_traverse(
-  db_state: state.DbState,
-  current_ids: List(Int),
-  expr: query_types.TraversalExpr,
-) -> List(Int) {
-  case expr {
-    [] -> current_ids
-    [step, ..rest] -> {
-      let next_ids =
-        list.fold(current_ids, [], fn(acc, id) {
-          let step_results = case step {
-            query_types.Out(attr) -> {
-              let datoms = case db_state.ets_name {
-                Some(name) ->
-                  ets_index.lookup_datoms(name <> "_eavt", fact.EntityId(id))
-                  |> list.filter(fn(d: fact.Datom) { d.attribute == attr })
-                None ->
-                  index.get_datoms_by_entity_attr(
-                    db_state.eavt,
-                    fact.EntityId(id),
-                    attr,
-                  )
-              }
-              let active = filter_active(datoms, db_state)
-              list.filter_map(active, fn(d) {
-                case d.value {
-                  fact.Ref(fact.EntityId(v_id)) -> Ok(v_id)
-                  fact.Int(v_id) -> Ok(v_id)
-                  _ -> Error(Nil)
-                }
-              })
-            }
-            query_types.In(attr) -> {
-              let datoms = case db_state.ets_name {
-                Some(name) ->
-                  ets_index.lookup_datoms(name <> "_aevt", attr)
-                  |> list.filter(fn(d: fact.Datom) {
-                    case d.value {
-                      fact.Ref(fact.EntityId(v_id)) -> v_id == id
-                      fact.Int(v_id) -> v_id == id
-                      _ -> False
-                    }
-                  })
-                None ->
-                  index.get_datoms_by_val(
-                    db_state.aevt,
-                    attr,
-                    fact.Ref(fact.EntityId(id)),
-                  )
-              }
-              let active = filter_active(datoms, db_state)
-              list.map(active, fn(d) {
-                let fact.EntityId(e) = d.entity
-                e
-              })
-            }
-          }
-          list.append(step_results, acc)
-        })
-        |> list.unique()
-
-      do_traverse(db_state, next_ids, rest)
-    }
-  }
+  traversal.traverse(db_state, start_id, expr, max_depth)
 }
 
 fn solve_temporal(
@@ -1599,95 +1169,6 @@ fn solve_temporal(
   list.map(rows, fn(r) { dict.insert(r, variable, fact.Int(time)) })
 }
 
-fn compile_predicate(
-  expr: ast.Expression,
-) -> fn(Dict(String, fact.Value)) -> Bool {
-  case expr {
-    ast.Eq(a, b) -> {
-      fn(ctx) {
-        let val_a = resolve_part_optional(a, ctx)
-        let val_b = resolve_part_optional(b, ctx)
-        val_a == val_b && option.is_some(val_a)
-      }
-    }
-    ast.Neq(a, b) -> {
-      fn(ctx) {
-        let val_a = resolve_part_optional(a, ctx)
-        let val_b = resolve_part_optional(b, ctx)
-        val_a != val_b
-      }
-    }
-    ast.Gt(a, b) -> {
-      fn(ctx) {
-        let val_a = resolve_part_optional(a, ctx) |> option.unwrap(fact.Int(0))
-        let val_b = resolve_part_optional(b, ctx) |> option.unwrap(fact.Int(0))
-        fact.compare(val_a, val_b) == order.Gt
-      }
-    }
-    ast.Lt(a, b) -> {
-      fn(ctx) {
-        let val_a = resolve_part_optional(a, ctx) |> option.unwrap(fact.Int(0))
-        let val_b = resolve_part_optional(b, ctx) |> option.unwrap(fact.Int(0))
-        fact.compare(val_a, val_b) == order.Lt
-      }
-    }
-    ast.And(l, r) -> {
-      let compiled_l = compile_predicate(l)
-      let compiled_r = compile_predicate(r)
-      fn(ctx) { compiled_l(ctx) && compiled_r(ctx) }
-    }
-    ast.Or(l, r) -> {
-      let compiled_l = compile_predicate(l)
-      let compiled_r = compile_predicate(r)
-      fn(ctx) { compiled_l(ctx) || compiled_r(ctx) }
-    }
-  }
-}
-
-fn resolve_entity_id_from_part(
-  part: ast.Part,
-  ctx: Dict(String, fact.Value),
-) -> Option(fact.EntityId) {
-  case resolve_part_optional(part, ctx) {
-    Some(fact.Ref(eid)) -> Some(eid)
-    Some(fact.Int(i)) -> Some(fact.EntityId(i))
-    _ -> None
-  }
-}
-
-fn solve_starts_with(
-  db_state: state.DbState,
-  var: String,
-  prefix: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  case dict.get(ctx, var) {
-    Ok(val) -> {
-      // Bound: Filter
-      case val {
-        fact.Str(s) -> {
-          case string.starts_with(s, prefix) {
-            True -> [ctx]
-            False -> []
-          }
-        }
-        _ -> []
-      }
-    }
-    Error(_) -> {
-      let entries = art.search_prefix_entries(db_state.art_index, prefix)
-      list.map(entries, fn(entry) {
-        let #(val, _eid) = entry
-        // Note: StartsWith(v, p) only binds 'v'. It doesn't bind an entity 'e'.
-        // If we want 'e', we'd need a clause like Fact(e, attr, v).
-        // Here we just bind 'v'.
-        dict.insert(ctx, var, val)
-      })
-      |> list.unique()
-    }
-  }
-}
-
 // `search_prefix` traverses the tree and collects values.
 // In `art.gleam`, `collect_all_values` returns `List(fact.EntityId)`.
 // It doesn't yield the implementation keys (the actual strings).
@@ -1718,298 +1199,6 @@ fn solve_starts_with(
 
 // Wait, if I want to use the index, I should probably expose `search_prefix_keys`.
 // Let's implement it as a Filter for now to be safe and correct.
-fn solve_shortest_path(
-  db_state: state.DbState,
-  from: ast.Part,
-  to: ast.Part,
-  edge: String,
-  path_var: String,
-  cost_var: Option(String),
-  max_depth: Option(Int),
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let from_eid = resolve_entity_id_from_part(from, ctx)
-  let to_eid = resolve_entity_id_from_part(to, ctx)
-
-  case from_eid, to_eid {
-    Some(f), Some(t) -> {
-      case graph.shortest_path(db_state, f, t, edge, max_depth) {
-        Some(path) -> {
-          let path_val = fact.List(list.map(path, fact.Ref))
-          let ctx = dict.insert(ctx, path_var, path_val)
-          let ctx = case cost_var {
-            Some(cv) -> dict.insert(ctx, cv, fact.Int(list.length(path) - 1))
-            None -> ctx
-          }
-          [ctx]
-        }
-        None -> []
-      }
-    }
-    _, _ -> []
-  }
-}
-
-fn solve_pagerank(
-  db_state: state.DbState,
-  entity_var: String,
-  edge: String,
-  rank_var: String,
-  damping: Float,
-  iterations: Int,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let ranks = graph.pagerank(db_state, edge, damping, iterations)
-
-  case dict.get(ctx, entity_var) {
-    Ok(fact.Ref(eid)) -> {
-      case dict.get(ranks, eid) {
-        Ok(rank) -> [dict.insert(ctx, rank_var, fact.Float(rank))]
-        Error(_) -> []
-      }
-    }
-    Ok(fact.Int(eid_int)) -> {
-      let eid = fact.EntityId(eid_int)
-      case dict.get(ranks, eid) {
-        Ok(rank) -> [dict.insert(ctx, rank_var, fact.Float(rank))]
-        Error(_) -> []
-      }
-    }
-    Error(_) -> {
-      // Unbound, generate all
-      dict.fold(ranks, [], fn(acc, eid, rank) {
-        let new_ctx = dict.insert(ctx, entity_var, fact.Ref(eid))
-        let new_ctx = dict.insert(new_ctx, rank_var, fact.Float(rank))
-        [new_ctx, ..acc]
-      })
-    }
-    _ -> []
-  }
-}
-
-fn solve_reachable(
-  db_state: state.DbState,
-  from: ast.Part,
-  edge: String,
-  node_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let from_eid = resolve_entity_id_from_part(from, ctx)
-  case from_eid {
-    Some(eid) -> {
-      let nodes = graph.reachable(db_state, eid, edge)
-      list.map(nodes, fn(n) { dict.insert(ctx, node_var, fact.Ref(n)) })
-    }
-    None -> []
-  }
-}
-
-fn solve_connected_components(
-  db_state: state.DbState,
-  edge: String,
-  entity_var: String,
-  component_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let components = graph.connected_components(db_state, edge)
-  case dict.get(ctx, entity_var) {
-    Ok(fact.Ref(eid)) -> {
-      case dict.get(components, eid) {
-        Ok(cid) -> [dict.insert(ctx, component_var, fact.Int(cid))]
-        Error(_) -> []
-      }
-    }
-    Ok(fact.Int(eid_int)) -> {
-      let eid = fact.EntityId(eid_int)
-      case dict.get(components, eid) {
-        Ok(cid) -> [dict.insert(ctx, component_var, fact.Int(cid))]
-        Error(_) -> []
-      }
-    }
-    Error(_) -> {
-      // Unbound entity — generate all nodes with their component IDs
-      dict.fold(components, [], fn(acc, eid, cid) {
-        let new_ctx = dict.insert(ctx, entity_var, fact.Ref(eid))
-        let new_ctx = dict.insert(new_ctx, component_var, fact.Int(cid))
-        [new_ctx, ..acc]
-      })
-    }
-    _ -> []
-  }
-}
-
-fn solve_neighbors(
-  db_state: state.DbState,
-  from: ast.Part,
-  edge: String,
-  depth: Int,
-  node_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let from_eid = resolve_entity_id_from_part(from, ctx)
-  case from_eid {
-    Some(eid) -> {
-      let nodes = graph.neighbors_khop(db_state, eid, edge, depth)
-      list.map(nodes, fn(n) { dict.insert(ctx, node_var, fact.Ref(n)) })
-    }
-    None -> []
-  }
-}
-
-fn solve_strongly_connected(
-  db_state: state.DbState,
-  edge: String,
-  entity_var: String,
-  component_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let components = graph.strongly_connected_components(db_state, edge)
-  case dict.get(ctx, entity_var) {
-    Ok(fact.Ref(eid)) -> {
-      case dict.get(components, eid) {
-        Ok(cid) -> [dict.insert(ctx, component_var, fact.Int(cid))]
-        Error(_) -> []
-      }
-    }
-    Ok(fact.Int(eid_int)) -> {
-      let eid = fact.EntityId(eid_int)
-      case dict.get(components, eid) {
-        Ok(cid) -> [dict.insert(ctx, component_var, fact.Int(cid))]
-        Error(_) -> []
-      }
-    }
-    Error(_) -> {
-      dict.fold(components, [], fn(acc, eid, cid) {
-        let new_ctx = dict.insert(ctx, entity_var, fact.Ref(eid))
-        let new_ctx = dict.insert(new_ctx, component_var, fact.Int(cid))
-        [new_ctx, ..acc]
-      })
-    }
-    _ -> []
-  }
-}
-
-fn solve_cycle_detect(
-  db_state: state.DbState,
-  edge: String,
-  cycle_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let cycles = graph.cycle_detect(db_state, edge)
-  list.map(cycles, fn(cycle) {
-    let cycle_val = fact.List(list.map(cycle, fact.Ref))
-    dict.insert(ctx, cycle_var, cycle_val)
-  })
-}
-
-fn solve_betweenness(
-  db_state: state.DbState,
-  edge: String,
-  entity_var: String,
-  score_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let scores = graph.betweenness_centrality(db_state, edge)
-  case dict.get(ctx, entity_var) {
-    Ok(fact.Ref(eid)) -> {
-      case dict.get(scores, eid) {
-        Ok(score) -> [dict.insert(ctx, score_var, fact.Float(score))]
-        Error(_) -> []
-      }
-    }
-    Ok(fact.Int(eid_int)) -> {
-      let eid = fact.EntityId(eid_int)
-      case dict.get(scores, eid) {
-        Ok(score) -> [dict.insert(ctx, score_var, fact.Float(score))]
-        Error(_) -> []
-      }
-    }
-    Error(_) -> {
-      // Unbound — generate all
-      dict.fold(scores, [], fn(acc, eid, score) {
-        let new_ctx = dict.insert(ctx, entity_var, fact.Ref(eid))
-        let new_ctx = dict.insert(new_ctx, score_var, fact.Float(score))
-        [new_ctx, ..acc]
-      })
-    }
-    _ -> []
-  }
-}
-
-fn solve_topological_sort(
-  db_state: state.DbState,
-  edge: String,
-  entity_var: String,
-  order_var: String,
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  case graph.topological_sort(db_state, edge) {
-    Ok(ordered) -> {
-      list.index_map(ordered, fn(node, idx) {
-        let new_ctx = dict.insert(ctx, entity_var, fact.Ref(node))
-        dict.insert(new_ctx, order_var, fact.Int(idx))
-      })
-    }
-    Error(_cycle_nodes) -> {
-      // Graph has cycles — return empty (no valid ordering)
-      []
-    }
-  }
-}
-
-fn solve_virtual(
-  db_state: state.DbState,
-  predicate: String,
-  args: List(ast.Part),
-  outputs: List(String),
-  ctx: Dict(String, fact.Value),
-) -> List(Dict(String, fact.Value)) {
-  let resolved_args =
-    list.try_map(args, fn(arg) {
-      resolve_part_optional(arg, ctx)
-      |> option.to_result(Nil)
-    })
-
-  case resolved_args {
-    Ok(vals) -> {
-      case dict.get(db_state.virtual_predicates, predicate) {
-        Ok(adapter) -> {
-          let rows = adapter(vals)
-          list.filter_map(rows, fn(row) {
-            bind_virtual_outputs(ctx, outputs, row)
-          })
-        }
-        Error(_) -> []
-      }
-    }
-    Error(_) -> []
-  }
-}
-
-fn bind_virtual_outputs(
-  ctx: Dict(String, fact.Value),
-  outputs: List(String),
-  row: List(fact.Value),
-) -> Result(Dict(String, fact.Value), Nil) {
-  case list.length(outputs) == list.length(row) {
-    True -> {
-      list.zip(outputs, row)
-      |> list.try_fold(ctx, fn(acc, pair) {
-        let #(var, val) = pair
-        case dict.get(acc, var) {
-          Ok(existing) ->
-            case existing == val {
-              True -> Ok(acc)
-              False -> Error(Nil)
-            }
-          Error(_) -> Ok(dict.insert(acc, var, val))
-        }
-      })
-    }
-    False -> Error(Nil)
-  }
-}
-
 pub fn diff(
   db_state: state.DbState,
   from_tx: Int,
@@ -2042,78 +1231,6 @@ pub fn filter_by_time(
   })
 }
 
-fn solve_custom_index(
-  db_state: state.DbState,
-  var: String,
-  index_name: String,
-  query: state.IndexQuery,
-  threshold: Float,
-  ctx: Dict(String, fact.Value),
-  as_of_tx: Option(Int),
-  as_of_valid: Option(Int),
-) -> List(Dict(String, fact.Value)) {
-  case dict.get(db_state.extensions, index_name) {
-    Ok(instance) -> {
-      case dict.get(db_state.registry, instance.adapter_name) {
-        Ok(adapter) -> {
-          let results = adapter.search(instance.data, query, threshold)
-          list.filter_map(results, fn(eid) {
-            // Verify if the entity actually exists and matches at the given time
-            // For ART, we currently assume the search result is a candidate EID.
-            let datoms = index.get_datoms_by_entity(db_state.eavt, eid)
-            let active =
-              datoms
-              |> filter_by_time(as_of_tx, as_of_valid)
-              |> filter_active(db_state)
-
-            case active {
-              [d, ..] -> {
-                let val = fact.Ref(d.entity)
-                case dict.get(ctx, var) {
-                  Ok(existing) if existing == val -> Ok(ctx)
-                  Ok(_) -> Error(Nil)
-                  Error(Nil) -> Ok(dict.insert(ctx, var, val))
-                }
-              }
-              [] -> Error(Nil)
-            }
-          })
-        }
-        Error(_) -> []
-      }
-    }
-    Error(_) -> []
-  }
-}
-
-fn solve_similarity_entity(
-  db_state: state.DbState,
-  var: String,
-  vec: List(Float),
-  threshold: Float,
-  ctx: Dict(String, fact.Value),
-  _as_of_tx: Option(Int),
-  _as_of_valid: Option(Int),
-) -> List(Dict(String, fact.Value)) {
-  case vec_index.size(db_state.vec_index) > 0 {
-    True -> {
-      let norm_vec = vector.normalize(vec)
-      let results =
-        vec_index.search(db_state.vec_index, norm_vec, threshold, 100)
-      list.filter_map(results, fn(r) {
-        let val = fact.Ref(r.entity)
-        case dict.get(ctx, var) {
-          Ok(existing) if existing == val -> Ok(ctx)
-          Ok(_) -> Error(Nil)
-          Error(Nil) -> Ok(dict.insert(ctx, var, val))
-        }
-      })
-    }
-    False -> []
-    // Fallback to scan not implemented for Entity binding yet, relying on index
-  }
-}
-
 pub fn solve_cognitive(
   db_state: state.DbState,
   concept: ast.Part,
@@ -2124,51 +1241,14 @@ pub fn solve_cognitive(
   as_of_tx: Option(Int),
   as_of_valid: Option(Int),
 ) -> List(Dict(String, fact.Value)) {
-  let concept_val = resolve_part_optional(concept, ctx)
-  let context_val = resolve_part_optional(context, ctx)
-
-  let active_concept =
-    case concept_val {
-      Some(v) -> index.get_datoms_by_val(db_state.aevt, "engram/concept", v)
-      None -> index.get_all_datoms_for_attr(db_state.eavt, "engram/concept")
-    }
-    |> filter_by_time(as_of_tx, as_of_valid)
-    |> filter_active(db_state)
-
-  let active_context =
-    case context_val {
-      Some(v) -> index.get_datoms_by_val(db_state.aevt, "engram/context", v)
-      None -> index.get_all_datoms_for_attr(db_state.eavt, "engram/context")
-    }
-    |> filter_by_time(as_of_tx, as_of_valid)
-    |> filter_active(db_state)
-
-  let concept_eids =
-    list.map(active_concept, fn(d) { d.entity }) |> set.from_list()
-  let context_eids =
-    list.map(active_context, fn(d) { d.entity }) |> set.from_list()
-
-  let matching_eids = set.intersection(concept_eids, context_eids)
-
-  list.filter_map(set.to_list(matching_eids), fn(eid) {
-    let relevance_datoms =
-      index.get_datoms_by_entity_attr(db_state.eavt, eid, "engram/relevance")
-      |> filter_by_time(as_of_tx, as_of_valid)
-      |> filter_active(db_state)
-
-    let score = case relevance_datoms {
-      [d, ..] ->
-        case d.value {
-          fact.Float(f) -> f
-          fact.Int(i) -> int.to_float(i)
-          _ -> 0.0
-        }
-      [] -> 1.0
-    }
-
-    case score >=. threshold {
-      True -> Ok(dict.insert(ctx, engram_var, fact.Ref(eid)))
-      False -> Error(Nil)
-    }
-  })
+  cognitive.solve(
+    db_state,
+    concept,
+    context,
+    threshold,
+    engram_var,
+    ctx,
+    as_of_tx,
+    as_of_valid,
+  )
 }

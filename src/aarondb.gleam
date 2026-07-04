@@ -40,8 +40,6 @@ pub type SpeculativeResult {
   SpeculativeResult(state: state.DbState, datoms: List(fact.Datom))
 }
 
-import gleam/dynamic.{type Dynamic}
-
 pub fn new() -> Db {
   new_with_adapter(None)
 }

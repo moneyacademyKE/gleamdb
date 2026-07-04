@@ -1,96 +1,90 @@
 # AaronDB Architecture
 
 > "Simplicity is not about making things easy. It is about untangling complexity."
-> — Rich Hickey
 
-AaronDB is a BEAM-native database engine that fully de-complects storage from
-computation and processing from identity. It represents a unified architecture
-combining a high-performance temporal Datalog engine with an associative
-Cognitive Memory inspired by human learning processes.
+AaronDB is best understood as a temporal Datalog engine with extensions. The essential architecture is smaller and stronger than the full set of ideas present in this repository.
 
-## Core Architectural Principles
+## Essential Core
 
-1. **The Database is a Value**
-   We treat the database not as a mutating place, but as a succession of
-   immutable values. Every transaction creates a new root state (value),
-   preserving the entire history. This guarantees consistency without locking
-   during query execution.
+### 1. Actor-Owned Transactions
 
-2. **Sovereign Actors**
-   Using Erlang/OTP, every Datalog query executes as a sovereign process. This
-   enables fine-grained timeouts, complete isolation, and multi-core
-   distribution without shared-state contention.
+A transactor actor owns the mutable process boundary. Transactions are serialized through that actor, while callers interact with values and results.
 
-3. **Data Over Objects**
-   There are no ORMs or complex object graphs. Data is represented as atomic,
-   5-arity tuples (Datoms): `[Entity_ID, Attribute, Value, Transaction_ID,
-   Operation_Type]`. This generic shape allows indices to be built generically.
+Core modules:
 
-4. **Silicon Saturation (Indices)**
-   Read operations are de-complected from writes. While writes serialize via a
-   Raft-based consensus or simple Transaction Log, reads are distributed across
-   lock-free, concurrent ETS (Erlang Term Storage) tables.
+- `src/aarondb.gleam`
+- `src/aarondb/transactor.gleam`
+- `src/aarondb/shared/state.gleam`
 
-## The Cognitive Engine (Integration)
+### 2. Facts and Datoms
 
-AaronDB integrates cognitive capabilities previously isolated in the MuninnDB Go
-project directly into the Gleam codebase:
+The basic data model is a datom carrying:
 
-### Engram Record Format (ERF)
+- entity
+- attribute
+- value
+- transaction id
+- transaction order
+- valid time
+- operation
 
-The cognitive engine defines memory as "Engrams" (Concepts) and "Traces"
-(Contexts). These semantic nodes contain Base-Level Learning scores (ACT-R Log
-Decay).
+This generic representation allows query execution and indexing to stay data-oriented.
 
-### The `Cognitive` Datalog Predicate
+### 3. Index-Oriented Reads
 
-Unlike traditional relational engines that require separate external ML matching
-services (complection), AaronDB evaluates semantic relevance natively within the
-logical executor.
+The primary in-memory indexes are:
 
-The Datalog clause `Cognitive(concept, context, threshold, bind_var)` computes
-semantic association weight dynamically and only joins rows that pass the
-Hebbian association threshold.
+- `EAVT`
+- `AEVT`
+- `AVET`
 
-## Storage Adapters
+They support the main query path and are updated during transaction processing.
 
-The engine logic is decoupled from persistence protocols:
+### 4. Interpreted Query Execution
 
-- **In-Memory:** For ephemeral what-if analysis (`aarondb.with_facts`)
-- **SQLite:** Write-Ahead Log optimized standard persistence.
-- **Mnesia:** Distributed, durable persistence for the BEAM fabric.
+Queries are represented as AST values and executed by a custom interpreter. The engine also includes rule derivation, pull handling, graph clauses, and aggregation.
 
-## AaronDB Edge: The Sovereign Stack
+This is powerful, but it also means much of the system's complexity is concentrated in a small number of large modules.
 
-Unlike the traditional BEAM-native engine, AaronDB Edge is a
-memory-first Transactional Datalog Engine optimized for Cloudflare Workers.
+Current engine boundaries:
 
-### 1. Memory-First Durable Objects
+- `engine.gleam`: top-level query orchestration, rule derivation, core clause solving, aggregate and temporal coordination.
+- `engine/planner.gleam`: query optimization, aggregate metadata collection, and top-level result ordering/pagination.
+- `engine/executor.gleam`: planned clause execution over contexts with a clause-solver callback.
+- `engine/solver_context.gleam`: explicit solver state passed through execution boundaries.
+- `engine/entity.gleam`: entity history, active-datom filtering, pull, diff, and time filtering.
+- `engine/traversal.gleam`: traversal expressions over entity references.
+- `engine/predicate.gleam`: compiled filter predicates.
+- `engine/graph_clauses.gleam`: Datalog graph clause adapters.
+- `engine/retrieval.gleam`: vector similarity and custom-index clauses.
+- `engine/string_clause.gleam`: string prefix clauses backed by ART.
+- `engine/virtual.gleam`: virtual predicate argument and output binding.
+- `engine/cognitive.gleam`: cognitive memory clause evaluation.
 
-The Edge engine resides within a **Cloudflare Durable Object**. Every instance
-represents a "Sovereign Brain" for an agent, maintaining its entire EAVT
-index as an immutable Gleam-generated data structure in memory. This
-eliminates database latency, allowing joins to execute in the same
-millisecond as the query arrival.
+## Extension Layers
 
-### 2. Polyglot Persistence & Durability
+These exist in the repository, but should be treated as optional layers over the core rather than the definition of AaronDB itself.
 
-1. **D1 (Write-Ahead Log)**: Every transaction is asynchronously persisted
-   to Cloudflare D1 (SQLite). This provides the durability layer required
-   to rehydrate the memory state if the Durable Object is evicted.
-2. **R2 (Archive)**: Periodic snapshots of the entire memory-resident
-   database are archived to R2 as JSON blobs, providing long-term
-   point-in-time recovery.
+| Layer | Current Role |
+| --- | --- |
+| Sharding | Parallel routing and scatter/gather query execution |
+| Raft | Leader-election state machine |
+| Search | ART, vector index, BM25 |
+| Agent tooling | MCP, RAG, capability-gated gateway |
+| CMS | GleamCMS application code |
 
-### 3. Edge-Native AI Integration
+## Current Architectural Reality
 
-The stack integrates directly with **Cloudflare Workers AI** and **Vectorize**:
+AaronDB has a strong center and a broad edge.
 
-- **Automatic Embeddings**: New facts trigger background embedding
-  generation (`bge-small-en-v1.5`).
-- **Semantic Joins**: Hybrid search combines global top-k lookups from
-  Vectorize with local Datalog filtering to provide context-aware,
-  temporally-constrained reasoning.
+- The center is the transactor, datom model, indexes, and query engine.
+- The edge contains several ambitious systems at different maturity levels.
 
-This architecture de-complects computation from the network, providing a
-stateful, reasoning-capable foundation for autonomous agents.
+That means the main architectural task is not inventing more features. It is preserving clarity around the core while preventing optional layers from becoming inseparable from it.
+
+## Recommended Direction
+
+1. Keep the core database contract small and explicit.
+2. Treat distributed, agent, search, and CMS modules as extension surfaces.
+3. Reduce documentation drift by tying claims to exported APIs and tests.
+4. Keep future engine changes inside the smallest concern-specific module possible.

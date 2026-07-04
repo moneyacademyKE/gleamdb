@@ -2,10 +2,13 @@
 
 ## Introduction
 
-This document tracks the gap between the current state of **AaronDB** and the
-ultimate vision of a fully autonomous, sovereign intelligent database system.
-It outlines current capabilities, missing components, and architectural
-challenges.
+This document tracks the gap between the strongest implemented AaronDB core and
+the broader platform vision described elsewhere in the repository.
+
+The key distinction is simple:
+
+- the core temporal Datalog engine is real and well tested
+- several surrounding systems remain extension-grade or experimental
 
 ## 1. Datalog Expressiveness
 
@@ -22,12 +25,12 @@ Supports core Datalog logic: pattern matching, `Bind`, graph algorithms
   memory-intensive on deep graphs and could benefit from query-planner
   optimizations or lazy stream evaluation.
 
-## 2. Distributed Operation & Raft
+## 2. Distributed Operation and Raft
 
 **Current State:**
 
-Native Sharding (v1.7) partitions facts across logical shards effectively. Raft
-term-based election provides basic HA capability for individual shards.
+Native sharding exists and distributed query helpers are implemented. Raft
+currently provides a leader-election state machine.
 
 **Gaps:**
 
@@ -36,19 +39,23 @@ term-based election provides basic HA capability for individual shards.
 - The `Distributed Sovereign` telemetry uses raw Erlang distribution (Global)
   which does not scale beyond ~60-100 nodes. Transitioning to a Hash Ring
   (e.g., Riak Core) is needed for massive scale.
+- Current distributed queries still rely on scatter/gather execution and do not
+  yet amount to a tightly bounded distributed query planner.
+- Raft claims should remain scoped to election and leadership behavior until a
+  fuller replicated-log story exists.
 
 ## 3. Cognitive Engine (MuninnDB Integration)
 
 **Current State:**
 
 Ported successfully to pure Gleam. `Engram` decay functions (ACT-R) and Hebbian
-learning are implemented and reachable dynamically via Datalog queries. 35 MCP
-tools have been translated and JSON-RPC stubs created.
+learning are implemented and reachable dynamically via Datalog queries. MCP
+server support exists with a small implemented subset of tools.
 
 **Gaps:**
 
-- Core MCP tools (`remember`, `recall`, `read`) are explicitly mapped; the 
-  remaining ~30 tools are currently stubbed.
+- Core MCP tools (`remember`, `recall`, `read`) are explicitly mapped; the
+  broader MCP surface remains incomplete.
 - Adaptive active decay (ACT-R) is now applied periodically to the engram pool 
   via background database ticks.
 
@@ -67,6 +74,7 @@ network.
 
 ## Immediate Action Items
 
-1. Map the 35 tools in `server.gleam` to their respective database operations.
-2. Implement dynamic shard rebalancing.
-3. Optimize graph recursion bounds.
+1. Keep the README and architecture docs aligned with exported APIs and tests.
+2. Continue separating core engine concerns from extension layers.
+3. Implement dynamic shard rebalancing only after the distributed contract is clearer.
+4. Expand MCP claims only when handlers and result formatting are complete.

@@ -1,5 +1,5 @@
 import aarondb/shared/state.{type QueryContext}
-import gleam/dict.{type Dict}
+import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/result

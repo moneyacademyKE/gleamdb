@@ -1,7 +1,7 @@
 import aarondb/fact.{type Datom}
 import aarondb/shared/ast.{type Clause}
 import aarondb/storage.{
-  type StorageAdapter, type StorageError, StorageError, TransactionError,
+  type StorageAdapter, type StorageError, TransactionError,
 }
 
 @external(erlang, "aarondb_mnesia_ffi", "init")
