@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.1 - 2026-07-04
+
+### Added
+
+- `engine/solver/derived.gleam` for derived-clause handling.
+- `engine/solver/vector_input.gleam` for vector-target extraction.
+
+### Changed
+
+- `engine.gleam` reduced from 317 to 296 lines.
+- Solver glue moved out of `engine.gleam` into dedicated modules.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures, no warnings.
+
 ## 2.4.0 - 2026-07-04
 
 ### Added

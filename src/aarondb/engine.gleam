@@ -6,8 +6,8 @@ import aarondb/engine/planner
 import aarondb/engine/rules
 import aarondb/engine/solver/bindings
 import aarondb/engine/solver/core
+import aarondb/engine/solver/derived
 import aarondb/engine/solver/recursive
-import aarondb/engine/solver/triple
 import aarondb/engine/solver_context
 import aarondb/engine/traversal
 import aarondb/fact
@@ -158,14 +158,7 @@ fn solve_with_context(
   List(Dict(String, fact.Value)),
   Option(Dict(String, List(internal.StorageChunk))),
 ) {
-  solve_clause_with_derived(
-    solver.db_state,
-    clause,
-    ctx,
-    solver.derived,
-    solver.as_of_tx,
-    solver.as_of_valid,
-  )
+  derived.solve_with_context(solver, clause, ctx, solve_clause)
 }
 
 fn solve_clause_with_derived(
@@ -179,29 +172,15 @@ fn solve_clause_with_derived(
   List(Dict(String, fact.Value)),
   Option(Dict(String, List(internal.StorageChunk))),
 ) {
-  case clause {
-    ast.Positive(trip) -> #(
-      triple.solve(db_state, trip, ctx, all_derived, as_of_tx, as_of_valid),
-      None,
-    )
-    ast.Negative(trip) -> {
-      case
-        triple.solve(db_state, trip, ctx, all_derived, as_of_tx, as_of_valid)
-      {
-        [] -> #([ctx], None)
-        _ -> #([], None)
-      }
-    }
-    _ ->
-      solve_clause(
-        db_state,
-        clause,
-        ctx,
-        db_state.stored_rules,
-        as_of_tx,
-        as_of_valid,
-      )
-  }
+  derived.solve_clause_with_derived(
+    db_state,
+    clause,
+    ctx,
+    all_derived,
+    as_of_tx,
+    as_of_valid,
+    solve_clause,
+  )
 }
 
 pub fn entity_history(

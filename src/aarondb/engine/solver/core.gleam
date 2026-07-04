@@ -8,6 +8,7 @@ import aarondb/engine/predicate
 import aarondb/engine/retrieval
 import aarondb/engine/solver/bindings
 import aarondb/engine/solver/positive
+import aarondb/engine/solver/vector_input
 import aarondb/engine/solver_context
 import aarondb/engine/string_clause
 import aarondb/engine/temporal_clause.{
@@ -19,7 +20,6 @@ import aarondb/shared/ast
 import aarondb/shared/state
 import aarondb/storage/internal
 import gleam/dict.{type Dict}
-import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/set
 
@@ -68,7 +68,7 @@ pub fn solve_clause(
       )
     }
     ast.Similarity(variable: var, target: target_p, threshold: threshold) -> {
-      let vec = vector_from_part(target_p, ctx)
+      let vec = vector_input.vector_from_part(target_p, ctx)
       #(
         retrieval.similarity(
           db_state,
@@ -83,7 +83,7 @@ pub fn solve_clause(
       )
     }
     ast.SimilarityEntity(variable: var, target: target_p, threshold: threshold) -> {
-      let vec = vector_from_part(target_p, ctx)
+      let vec = vector_input.vector_from_part(target_p, ctx)
       #(retrieval.similarity_entity(db_state, var, vec, threshold, ctx), None)
     }
     ast.Cognitive(concept, context, threshold, engram_var) -> #(
@@ -235,22 +235,5 @@ pub fn solve_clause(
       }
     }
     _ -> #([ctx], None)
-  }
-}
-
-fn vector_from_part(
-  target_p: ast.Part,
-  ctx: Dict(String, fact.Value),
-) -> List(Float) {
-  case bindings.resolve_part(target_p, ctx) {
-    Some(fact.Vec(vs)) -> vs
-    Some(fact.List(vs)) ->
-      list.filter_map(vs, fn(v) {
-        case v {
-          fact.Float(f) -> Ok(f)
-          _ -> Error(Nil)
-        }
-      })
-    _ -> []
   }
 }
