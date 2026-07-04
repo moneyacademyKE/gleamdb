@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.5 - 2026-07-04
+
+### Changed
+
+- Added an explicit GitHub Actions workflow name and release permissions to finalize autonomous GitHub release creation.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures, no warnings.
+- Release workflow configured with current Gleam, OTP 27, rebar3, `HEX_API_KEY`, and `contents: write` permissions.
+
 ## 2.4.4 - 2026-07-04
 
 ### Changed
