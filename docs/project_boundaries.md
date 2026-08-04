@@ -10,7 +10,7 @@ AaronDB currently contains several ideas in one repository. This document define
 | Distributed layer | Sharding, routing, distributed query coordination | Optional extension over the core |
 | Search layer | Vector, BM25, ART, hybrid retrieval | Optional extension with explicit cost and storage trade-offs |
 | Agent layer | MCP, RAG, capability-gated tools | Separate integration surface, not core DB identity |
-| CMS layer | GleamCMS editor, router, themes, builder | Product built on top of AaronDB, not part of the essential engine |
+| CMS layer | **Removed** (v3.0.0) — the experimental GleamCMS HTTP/CMS product surface was fully self-contained and never imported by the core, tests, or the MCP layer. See PR #1. |
 
 ## What Belongs In Core
 

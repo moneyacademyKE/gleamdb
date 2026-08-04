@@ -22,11 +22,10 @@ This document separates implemented capability from vision. The goal is to keep 
 | Vector and BM25 search | Beta | Separate modules and tests | Hybrid retrieval story is broader than current interfaces |
 | Federation and virtual predicates | Beta | AST and tests exist | Operational contracts are still thin |
 | Reactive subscriptions and WAL-style hooks | Beta | Reactive module and tests | Behavior depends on actor interactions and timing |
-| Sharding | Beta/Experimental | `src/aarondb/sharded.gleam`, tests | Distributed query path is still scatter/gather full scan |
-| Raft / HA | Experimental | Pure election state machine in `src/aarondb/raft.gleam` | Not a full replicated-log consensus implementation |
-| MCP server | Experimental | Partial handlers in `src/aarondb/mcp/server.gleam` | Tool coverage and protocol output remain incomplete |
-| Cognitive memory layer | Experimental | Query surface exists | Documentation and claims outrun the most bounded implementation |
-| GleamCMS | Experimental | Separate app subtree exists | Product concerns are mixed into the DB repository |
+| Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Distributed query path is still scatter/gather full scan; cross-shard average/median are approximate (avg-of-averages / median-of-medians); migration helper returns an explicit not-implemented error |
+| Raft / HA | Inactive stub | Pure election-only state machine in `src/aarondb/raft.gleam` | Deliberately dormant; no log replication, transport, or runtime integration |
+| MCP server | Beta | Three real tools (remember, recall, read) with JSON serialization and a typed actor entry point in `src/aarondb/mcp/server.gleam` | No production transport (stdio/network) yet; auth tokens are decoded but not signature-verified |
+| Cognitive memory layer | Experimental | Pure `erf`/`scoring` modules are unit-tested (`cognitive_test.gleam`); engine has its own working `Cognitive` clause solver | The pure modules are not yet integrated with the engine solver — decide integration vs removal |
 
 ## Adoption Guidance
 
