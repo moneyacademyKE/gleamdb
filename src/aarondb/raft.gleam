@@ -1,7 +1,3 @@
-import gleam/erlang/process.{type Pid}
-import gleam/list
-import gleam/option.{type Option, None, Some}
-
 //// # raft — INACTIVE clustering scaffold (unwired stub)
 ////
 //// ⚠️ STATUS: A complete, pure, unit-tested **leader-election** state machine,
@@ -20,6 +16,10 @@ import gleam/option.{type Option, None, Some}
 //// It is retained as a deliberate, documented stub — a clustering seed, not
 //// active code. To revive: design a transport + peer config, add the missing
 //// replication half, and re-introduce a raft field on `DbState`.
+
+import gleam/erlang/process.{type Pid}
+import gleam/list
+import gleam/option.{type Option, None, Some}
 
 // --- Types ---
 

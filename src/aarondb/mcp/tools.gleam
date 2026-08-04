@@ -1,3 +1,8 @@
+//// # mcp/tools — MCP tool registry
+////
+//// Tool definitions exposed to MCP clients: `all_tools/0` returns the
+//// registry. Pure data over `gleam/json`; no side effects.
+
 import gleam/json
 
 pub type Tool {

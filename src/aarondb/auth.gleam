@@ -1,3 +1,12 @@
+//// # auth — capability-based authorization
+////
+//// Identity and authority for the gateway/MCP surface: `Action`, `Resource`,
+//// `Capability`, and `Token` types plus `authorize/3` and `decode_token/1`.
+////
+//// ⚠️ Tokens are JSON-decoded here, **not** cryptographically signed or
+//// verified — this layer models capabilities, it does not authenticate
+//// provenance. Signature verification (if required) must happen upstream.
+
 import gleam/json
 import gleam/list
 import gleam/string

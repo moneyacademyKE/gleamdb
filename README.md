@@ -4,7 +4,7 @@
 
 AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest current shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
 
-This repository also contains experimental distributed, search, MCP, cognitive, and CMS layers. Those subsystems are not all at the same maturity level. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
+This repository also contains experimental distributed, search, MCP, and cognitive layers. Those subsystems are not all at the same maturity level. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
 
 ## Core Model
 
@@ -31,9 +31,8 @@ This repository also contains experimental distributed, search, MCP, cognitive, 
 | Temporal querying and diff | Stable/Beta | Usable, but still tied to large core modules |
 | Graph, vector, BM25, federation | Beta | Implemented, but less bounded than core |
 | Sharding and distributed queries | Beta/Experimental | Works as scatter/gather; not a full distributed query fabric |
-| Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication). `is_leader` always returns `False`. See `src/aarondb/raft.gleam` |
+| Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication). Retained as a documented stub. See `src/aarondb/raft.gleam` |
 | MCP server and agent tooling | Experimental | Partial tool coverage and explicit TODOs remain |
-| GleamCMS | Experimental | Product layer mixed into the DB repo |
 
 ## Installation
 
@@ -41,15 +40,18 @@ Add `aarondb` to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "2.4.5"
+aarondb = "3.0.0"
 ```
 
-## Why 2.4.5 Is Better
+## Why 3.0.0 Is Better
 
-AaronDB 2.4.5 verifies the final autonomous GitHub release path.
+AaronDB 3.0.0 is a **breaking** cleanup release that removes experimental surface and dead weight.
 
-- CI and release workflows now target the current Gleam toolchain, install `rebar3`, run on OTP 27, and declare explicit release permissions.
-- Tag-triggered releases can publish automatically to Hex.pm when `HEX_API_KEY` is present.
+- **Removed the GleamCMS layer** — the experimental mist/wisp/lustre HTTP/CMS product surface that was mixed into the DB repo. It was fully self-contained and never imported by the core, tests, or the MCP layer.
+- **Pruned 9 now-unused dependencies** — mist, wisp, lustre, gleam_http, simplifile, gleam_regexp, gleam_crypto, logging (direct deps 13→4; manifest packages 25→5).
+- **Bumped `gleam_stdlib` to 1.0** (zero breakage in this codebase).
+- **Demoted raft to a documented stub** — the vestigial leader-election state machine is unwired from the engine and the inert public `is_leader` API is removed.
+- CI and release workflows target the current Gleam toolchain on OTP 27.
 - The package remains green: 169 tests pass with zero warnings.
 
 ## Basic Usage

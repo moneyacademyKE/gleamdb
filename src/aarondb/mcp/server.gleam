@@ -1,3 +1,9 @@
+//// # mcp/server — Model Context Protocol entry point
+////
+//// JSON-RPC MCP server: `handle_request/2` dispatches tool calls through the
+//// `gateway` (which enforces `auth`) and the `rag` semantic-intent layer.
+//// `start/1` wires the server; note it is currently only reached from tests.
+
 import aarondb.{type Db}
 import aarondb/auth
 import aarondb/fact.{Float, Str}

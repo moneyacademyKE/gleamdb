@@ -1,3 +1,10 @@
+//// # gateway — authorized access to the core
+////
+//// The in-process authorization boundary over the database: checks a `Token`'s
+//// capabilities via `auth`, then transacts or queries the core.
+//// `authorize_and_transact/4` and `authorize_and_query/4`. No HTTP — this is the
+//// programmatic surface the MCP server is built on.
+
 import aarondb.{type Db}
 import aarondb/auth
 import aarondb/fact
