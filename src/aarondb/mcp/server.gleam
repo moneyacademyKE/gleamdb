@@ -2,19 +2,24 @@
 ////
 //// JSON-RPC MCP server: `handle_request/2` dispatches tool calls through the
 //// `gateway` (which enforces `auth`) and the `rag` semantic-intent layer.
-//// `start/1` wires the server; note it is currently only reached from tests.
+//// `start/1` exposes a typed actor for request/response integration.
 
 import aarondb.{type Db}
 import aarondb/auth
-import aarondb/fact.{Float, Str}
+import aarondb/fact
 import aarondb/gateway
 import aarondb/mcp/tools
 import aarondb/rag
+import aarondb/shared/query_types
+import gleam/bit_array
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/erlang/process
+import gleam/io
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/otp/actor
 import gleam/result
 import gleam/string
 
@@ -40,33 +45,36 @@ pub type JsonRpcError {
   JsonRpcError(code: Int, message: String, data: Option(json.Json))
 }
 
-// Convert a JSON object to string and print to stdout
-pub fn send_response(response: JsonRpcResponse) {
-  let json_str =
-    json.object([
-      #("jsonrpc", json.string(response.jsonrpc)),
-      #("id", json.nullable(response.id, json.string)),
-      #("result", json.nullable(response.result, fn(x) { x })),
-      #(
-        "error",
-        json.nullable(response.error, fn(e) {
-          json.object([
-            #("code", json.int(e.code)),
-            #("message", json.string(e.message)),
-            #("data", json.nullable(e.data, fn(x) { x })),
-          ])
-        }),
-      ),
-    ])
-    |> json.to_string()
-
-  // In a real stdio MCP server, we would print this to stdout with a Content-Length header
-  // For now, we print it directly.
-  let _ = string.inspect(json_str)
-  Nil
+pub type ServerMessage {
+  Request(JsonRpcRequest, process.Subject(JsonRpcResponse))
+  Stop
 }
 
-// Map the tool name to a Datalog query or transaction
+// Convert a JSON-RPC response to a JSON line and write it to stdout.
+pub fn send_response(response: JsonRpcResponse) {
+  response_to_json(response) |> json.to_string() |> io.println()
+}
+
+fn response_to_json(response: JsonRpcResponse) -> json.Json {
+  json.object([
+    #("jsonrpc", json.string(response.jsonrpc)),
+    #("id", json.nullable(response.id, json.string)),
+    #("result", json.nullable(response.result, fn(x) { x })),
+    #(
+      "error",
+      json.nullable(response.error, fn(e) {
+        json.object([
+          #("code", json.int(e.code)),
+          #("message", json.string(e.message)),
+          #("data", json.nullable(e.data, fn(x) { x })),
+        ])
+      }),
+    ),
+  ])
+}
+
+// Dispatch the supported tool set. Other registry entries are advertised as
+// metadata only until their database semantics exist.
 pub fn execute_tool(
   db: Db,
   name: String,
@@ -76,7 +84,7 @@ pub fn execute_tool(
     "muninn_remember" -> handle_remember(db, args)
     "muninn_recall" -> handle_recall(db, args)
     "muninn_read" -> handle_read(db, args)
-    _ -> Error("Tool not implemented yet in AaronDB: " <> name)
+    _ -> Error("Unsupported MCP tool in AaronDB: " <> name)
   }
 }
 
@@ -104,9 +112,10 @@ fn handle_remember(db: Db, args: decode.Dynamic) -> Result(json.Json, String) {
       let conf_val = option.unwrap(confidence, 1.0)
 
       let facts = [
-        #(fact.uid(id), "engram/content", Str(content)),
-        #(fact.uid(id), "engram/concept", Str(concept_str)),
-        #(fact.uid(id), "engram/relevance", Float(conf_val)),
+        #(fact.uid(id), "engram/content", fact.Str(content)),
+        #(fact.uid(id), "engram/concept", fact.Str(concept_str)),
+        #(fact.uid(id), "engram/context", fact.Str(concept_str)),
+        #(fact.uid(id), "engram/relevance", fact.Float(conf_val)),
       ]
 
       let required_caps = [auth.Capability(auth.Write, auth.All)]
@@ -150,12 +159,7 @@ fn handle_recall(db: Db, args: decode.Dynamic) -> Result(json.Json, String) {
           required_caps,
         )
       {
-        Ok(results) ->
-          Ok(
-            json.array(results.rows, fn(_) {
-              json.string("TODO: format engram")
-            }),
-          )
+        Ok(results) -> Ok(json.array(results.rows, row_to_json))
         Error(gateway.Unauthorized(e)) -> Error("Unauthorized: " <> e)
         Error(gateway.TransactError(e)) -> Error("Transaction failed: " <> e)
         Error(gateway.QueryError(e)) -> Error("Query failed: " <> e)
@@ -177,8 +181,19 @@ fn handle_read(db: Db, args: decode.Dynamic) -> Result(json.Json, String) {
         Ok(token) -> {
           case auth.authorize(token, [auth.Capability(auth.Read, auth.All)]) {
             Ok(Nil) -> {
-              let _engram = aarondb.pull(db, fact.uid(id), aarondb.pull_all())
-              Ok(json.string("TODO: PullResult to JSON"))
+              Ok(
+                json.object([
+                  #("id", json.int(id)),
+                  #(
+                    "engram",
+                    pull_result_to_json(aarondb.pull(
+                      db,
+                      fact.uid(id),
+                      aarondb.pull_all(),
+                    )),
+                  ),
+                ]),
+              )
             }
             Error(e) -> Error("Unauthorized: " <> e)
           }
@@ -261,6 +276,75 @@ pub fn handle_request(db: Db, req: JsonRpcRequest) -> JsonRpcResponse {
   }
 }
 
-pub fn start(_db: Db) {
-  process.sleep_forever()
+fn value_to_json(value: fact.Value) -> json.Json {
+  case value {
+    fact.Str(value) -> json.string(value)
+    fact.Int(value) -> json.int(value)
+    fact.Float(value) -> json.float(value)
+    fact.Bool(value) -> json.bool(value)
+    fact.List(values) -> json.array(values, value_to_json)
+    fact.Vec(values) -> json.array(values, json.float)
+    fact.Ref(fact.EntityId(id)) -> json.object([#("ref", json.int(id))])
+    fact.Map(values) ->
+      json.object(
+        dict.to_list(values)
+        |> list.map(fn(pair) {
+          let #(key, value) = pair
+          #(key, value_to_json(value))
+        }),
+      )
+    fact.Blob(value) ->
+      json.object([
+        #("blob_base64", json.string(bit_array.base64_encode(value, True))),
+      ])
+  }
+}
+
+fn pull_result_to_json(value: query_types.PullResult) -> json.Json {
+  case value {
+    query_types.PullMap(values) ->
+      json.object(
+        dict.to_list(values)
+        |> list.map(fn(pair) {
+          let #(key, value) = pair
+          #(key, pull_result_to_json(value))
+        }),
+      )
+    query_types.PullSingle(value) -> value_to_json(value)
+    query_types.PullMany(values) -> json.array(values, value_to_json)
+    query_types.PullNestedMany(values) ->
+      json.array(values, pull_result_to_json)
+    query_types.PullRawBinary(value) ->
+      json.object([
+        #("blob_base64", json.string(bit_array.base64_encode(value, True))),
+      ])
+  }
+}
+
+fn row_to_json(row: dict.Dict(String, fact.Value)) -> json.Json {
+  json.object(
+    dict.to_list(row)
+    |> list.map(fn(pair) {
+      let #(key, value) = pair
+      #(key, value_to_json(value))
+    }),
+  )
+}
+
+/// Start the MCP request actor and return its typed message subject.
+pub fn start(
+  db: Db,
+) -> Result(process.Subject(ServerMessage), actor.StartError) {
+  actor.new(db)
+  |> actor.on_message(fn(current_db, message) {
+    case message {
+      Request(request, reply) -> {
+        process.send(reply, handle_request(current_db, request))
+        actor.continue(current_db)
+      }
+      Stop -> actor.stop()
+    }
+  })
+  |> actor.start()
+  |> result.map(fn(started) { started.data })
 }
