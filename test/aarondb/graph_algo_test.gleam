@@ -5,7 +5,6 @@ import aarondb/fact.{EntityId, Ref, Str}
 import aarondb/index
 import aarondb/index/art
 import aarondb/q
-import aarondb/raft
 import aarondb/shared/state as types
 import aarondb/storage
 import aarondb/vec_index
@@ -34,7 +33,6 @@ pub fn shortest_path_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -110,7 +108,6 @@ pub fn pagerank_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -278,7 +275,6 @@ pub fn reachable_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -364,7 +360,6 @@ pub fn connected_components_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -456,7 +451,6 @@ pub fn neighbors_khop_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -550,7 +544,6 @@ pub fn cycle_detect_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -646,7 +639,6 @@ pub fn betweenness_centrality_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -745,7 +737,6 @@ pub fn topological_sort_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),
@@ -864,7 +855,6 @@ pub fn strongly_connected_components_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),

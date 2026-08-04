@@ -1,7 +1,6 @@
 import aarondb/fact
 import aarondb/index
 import aarondb/index/art
-import aarondb/raft
 import aarondb/reactive
 import aarondb/shared/state as shared_state
 import aarondb/storage
@@ -143,7 +142,6 @@ fn base_state() {
     followers: [],
     is_distributed: False,
     ets_name: None,
-    raft_state: raft.new([]),
     vec_index: vec_index.new(),
     bm25_indices: dict.new(),
     art_index: art.new(),

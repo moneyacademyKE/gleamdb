@@ -31,7 +31,7 @@ This repository also contains experimental distributed, search, MCP, cognitive, 
 | Temporal querying and diff | Stable/Beta | Usable, but still tied to large core modules |
 | Graph, vector, BM25, federation | Beta | Implemented, but less bounded than core |
 | Sharding and distributed queries | Beta/Experimental | Works as scatter/gather; not a full distributed query fabric |
-| Raft and HA claims | Experimental | Leader-election state machine exists; production consensus story is incomplete |
+| Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication). `is_leader` always returns `False`. See `src/aarondb/raft.gleam` |
 | MCP server and agent tooling | Experimental | Partial tool coverage and explicit TODOs remain |
 | GleamCMS | Experimental | Product layer mixed into the DB repo |
 

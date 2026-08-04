@@ -2,6 +2,25 @@ import gleam/erlang/process.{type Pid}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 
+//// # raft — INACTIVE clustering scaffold (unwired stub)
+////
+//// ⚠️ STATUS: A complete, pure, unit-tested **leader-election** state machine,
+//// now **unwired** from the engine. The single-node AaronDB core no longer
+//// holds, initialises, or drives any raft state:
+////
+////   - `DbState` no longer has a `raft_state` field.
+////   - The transactor has no `RaftMsg` variant and never calls `handle_message`.
+////   - `aarondb.is_leader` has been removed.
+////
+//// SCOPE: This is Raft **election only**. The log-replication half
+//// (AppendEntries, commit index, log matching, apply) was never present, so
+//// it could not deliver replicated consistency on its own.
+////
+//// The pure protocol logic is sound and covered by `test/aarondb/raft_test`.
+//// It is retained as a deliberate, documented stub — a clustering seed, not
+//// active code. To revive: design a transport + peer config, add the missing
+//// replication half, and re-introduce a raft field on `DbState`.
+
 // --- Types ---
 
 /// The three roles in Raft's election protocol.
@@ -24,7 +43,7 @@ pub type RaftState {
   )
 }
 
-/// Effects that the transactor must execute after a state transition.
+/// Effects emitted after a state transition (data, not side effects).
 /// This de-complects the pure state machine from side effects.
 pub type RaftEffect {
   SendHeartbeat(to: Pid, term: Int, leader: Pid)

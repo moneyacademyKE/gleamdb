@@ -2,7 +2,6 @@ import aarondb
 import aarondb/fact.{Int, Str}
 import aarondb/index/art
 import aarondb/q
-import aarondb/raft
 import aarondb/shared/ast as types
 import aarondb/shared/state
 import aarondb/storage
@@ -41,7 +40,6 @@ pub fn virtual_predicate_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       art_index: art.new(),
       registry: dict.new(),

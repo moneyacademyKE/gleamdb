@@ -4,7 +4,6 @@ import aarondb/index
 import aarondb/index/art
 import aarondb/index/ets as ets_index
 import aarondb/process_extra
-import aarondb/raft
 import aarondb/reactive
 import aarondb/shared/ast
 import aarondb/shared/state
@@ -45,7 +44,6 @@ pub type Message {
   SetReactive(process.Subject(state.ReactiveMessage))
   Join(process.Pid)
   SyncDatoms(List(fact.Datom))
-  RaftMsg(raft.RaftMessage)
   Compact(process.Subject(Nil))
   SetConfig(state.Config, process.Subject(Nil))
   Sync(process.Subject(Nil))
@@ -112,7 +110,6 @@ fn do_start_named(
       followers: [],
       is_distributed: is_distributed,
       ets_name: ets_name,
-      raft_state: raft.new([]),
       vec_index: vec_index.new(),
       bm25_indices: dict.new(),
       art_index: art.new(),
