@@ -1,3 +1,10 @@
+//// # cognitive/erf — memory model (ported from MuninnDB; currently unwired)
+////
+//// Pure type definitions for the cognitive memory model (Engram, Association,
+//// lifecycle states, relation and memory types). NOT imported by the engine —
+//// `engine/cognitive` implements its own Cognitive-clause solver. Retained as
+//// a pure library pending integration; covered by `test/cognitive_test.gleam`.
+
 import gleam/option.{type Option}
 
 pub type Ulid =
