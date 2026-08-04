@@ -50,8 +50,8 @@ fn receive_all(
       case process.receive(subject, 5000) {
         Ok(WorkerResult(res)) ->
           receive_all(subject, n - 1, list.append(acc, res))
+        // Worker timed out: drop its partial result and continue.
         Error(_) -> receive_all(subject, n - 1, acc)
-        // Timeout, just skip for now or we could crash
       }
     }
   }
