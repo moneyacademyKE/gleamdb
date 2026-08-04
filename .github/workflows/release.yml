@@ -7,35 +7,65 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      skip_publish:
+        description: "Skip Hex publish (run docs/test/release only)"
+        required: false
+        default: "false"
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: erlef/setup-beam@v1
         with:
           gleam-version: "1.17.0"
           otp-version: "27"
           rebar3-version: "3"
+
       - run: gleam docs build
+
       - run: gleam test
-      - name: Verify version matches tag
+
+      - name: Verify version
         run: |
-          TAG=${GITHUB_REF#refs/tags/v}
           VERSION=$(grep '^version' gleam.toml | sed 's/.*"\(.*\)"/\1/')
-          if [ "$TAG" != "$VERSION" ]; then
-            echo "Tag $TAG does not match gleam.toml version $VERSION"
-            exit 1
-          fi
+          case "$GITHUB_REF" in
+            refs/tags/*)
+              TAG="${GITHUB_REF#refs/tags/v}"
+              if [ "$TAG" != "$VERSION" ]; then
+                echo "Tag v$TAG does not match gleam.toml version $VERSION"
+                exit 1
+              fi
+              echo "Tagged release v$TAG"
+              ;;
+            *)
+              echo "Manual run; gleam.toml version $VERSION"
+              ;;
+          esac
+
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           body_path: CHANGELOG.md
           draft: false
           prerelease: false
+
       - name: Publish to Hex
-        if: ${{ secrets.HEX_API_KEY != '' }}
-        run: gleam publish --yes
         env:
           HEXPM_API_KEY: ${{ secrets.HEX_API_KEY }}
+          SKIP_PUBLISH: ${{ inputs.skip_publish }}
+        run: |
+          if [ "$SKIP_PUBLISH" = "true" ]; then
+            echo "Skipping Hex publish (skip_publish=true)"
+            exit 0
+          fi
+          if [ -z "$HEXPM_API_KEY" ]; then
+            echo "::warning::HEX_API_KEY secret is not set; skipping Hex publish"
+            exit 0
+          fi
+          gleam publish --yes
