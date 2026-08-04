@@ -2,7 +2,6 @@ import aarondb/fact.{type AttributeConfig, type Datom, type DbFunction}
 import aarondb/index.{type AIndex, type AVIndex, type Index}
 import aarondb/index/art
 import aarondb/index/bm25
-import aarondb/raft
 import aarondb/shared/ast
 import aarondb/shared/query_types
 import aarondb/storage.{type StorageAdapter}
@@ -64,7 +63,6 @@ pub type DbState {
     followers: List(process.Pid),
     is_distributed: Bool,
     ets_name: Option(String),
-    raft_state: raft.RaftState,
     vec_index: vec_index.VecIndex,
     bm25_indices: Dict(String, bm25.BM25Index),
     art_index: art.Art,

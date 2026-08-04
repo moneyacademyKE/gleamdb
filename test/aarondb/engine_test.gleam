@@ -1,7 +1,6 @@
 import aarondb/engine
 import aarondb/fact
 import aarondb/index/art
-import aarondb/raft
 import aarondb/reactive
 import aarondb/shared/ast
 import aarondb/shared/query_types
@@ -32,7 +31,6 @@ pub fn engine_run_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       art_index: art.new(),
       registry: dict.new(),
       extensions: dict.new(),
@@ -77,7 +75,6 @@ pub fn pull_test() {
       followers: [],
       is_distributed: False,
       ets_name: None,
-      raft_state: raft.new([]),
       art_index: art.new(),
       registry: dict.new(),
       extensions: dict.new(),

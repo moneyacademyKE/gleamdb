@@ -5,7 +5,6 @@ import aarondb/index
 import aarondb/index/ets
 import aarondb/process_extra
 import aarondb/q.{type QueryBuilder}
-import aarondb/raft
 import aarondb/shared/ast
 import aarondb/shared/query_types
 import aarondb/shared/state
@@ -519,11 +518,6 @@ pub fn sync(db: Db) -> Nil {
   process.send(db, transactor.Sync(reply))
   let _ = process.receive(reply, 5000)
   Nil
-}
-
-pub fn is_leader(db: Db) -> Bool {
-  let state = transactor.get_state(db)
-  raft.is_leader(state.raft_state)
 }
 
 pub fn traverse(
