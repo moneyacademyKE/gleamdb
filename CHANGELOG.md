@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.0.0 - 2026-08-04
+
+A **breaking** cleanup release that removes the experimental CMS product surface and vestigial consensus scaffolding.
+
+### Removed
+
+- The experimental **GleamCMS layer** (`src/aarondb/gleamcms*`, `gleamcms_httpc_ffi.erl`) — a self-contained mist/wisp/lustre HTTP/CMS surface never imported by the core, tests, or MCP layer.
+- The dead `aarondb_raft_ffi.erl` Erlang timer stub (never `@external`-linked).
+- The inert public `aarondb.is_leader(db)` API and the `raft_state` field on `DbState` (raft demoted to a stub).
+- 9 now-unused dependencies: mist, wisp, lustre, gleam_http, simplifile, gleam_regexp, gleam_crypto, logging. Direct deps 13→4; manifest packages 25→5.
+
+### Changed
+
+- Bumped `gleam_stdlib` 0.69.0 → 1.0.3 (major, zero breakage); `gleeunit` 1.9.0 → 1.11.0.
+- `src/aarondb/raft.gleam` is now a documented, unwired clustering stub (election-only; no log replication).
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam test`: 169 passed, no failures.
+
 ## 2.4.5 - 2026-07-04
 
 ### Changed
