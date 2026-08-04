@@ -23,3 +23,15 @@ pub fn query_builder_test() {
     ast.Negative(#(ast.Var("e"), "missing", ast.Val(fact.Str("val")))),
   ] = query.where
 }
+
+pub fn similar_emits_similarity_clause_test() {
+  let query =
+    q.select(["x"])
+    |> q.similar("x", [0.9, 0.1, 0.0], 0.85)
+    |> q.to_query
+
+  should.equal(
+    query.where,
+    [ast.Similarity("x", ast.Val(fact.Vec([0.9, 0.1, 0.0])), 0.85)],
+  )
+}
