@@ -79,19 +79,27 @@ pub fn insert(
   }
 }
 
-/// Insert a vector, returning `Error` when its dimensionality differs from the
-/// index. Use this at validation boundaries when an invalid vector must be
-/// surfaced to the caller.
+/// Insert a vector, returning `Error` when it is empty, has zero magnitude, or
+/// its dimensionality differs from the index. Use this at validation boundaries
+/// when an invalid vector must be surfaced to the caller.
 pub fn try_insert(
   idx: VecIndex,
   entity: fact.EntityId,
   vec: List(Float),
 ) -> Result(VecIndex, Nil) {
   let dimensions = vector.dimensions(vec)
-  case idx.dimensions {
-    Some(expected) if expected != dimensions -> Error(Nil)
-    _ -> Ok(do_insert(idx, entity, vec, dimensions))
+  case valid_vector(vec) {
+    False -> Error(Nil)
+    True ->
+      case idx.dimensions {
+        Some(expected) if expected != dimensions -> Error(Nil)
+        _ -> Ok(do_insert(idx, entity, vec, dimensions))
+      }
   }
+}
+
+fn valid_vector(vec: List(Float)) -> Bool {
+  vector.dimensions(vec) > 0 && vector.magnitude(vec) != 0.0
 }
 
 /// Greedy-links the new node to its nearest existing neighbors across multiple levels.
@@ -266,8 +274,9 @@ pub fn search(
 
 /// Search for vectors similar to `query`.
 ///
-/// Returns `Error` when the query dimensions do not match the index. This
-/// prevents mismatched vectors from receiving a truncated similarity score.
+/// Returns `Error` when the query is empty, has zero magnitude, does not match
+/// the index dimensions, `threshold` is outside `[-1.0, 1.0]`, or `k` is not
+/// positive. This prevents invalid inputs from receiving ambiguous scores.
 pub fn try_search(
   idx: VecIndex,
   query: List(Float),
@@ -275,10 +284,18 @@ pub fn try_search(
   k: Int,
 ) -> Result(List(SearchResult), Nil) {
   let dimensions = vector.dimensions(query)
-  case idx.dimensions {
-    Some(expected) if expected != dimensions -> Error(Nil)
-    _ -> Ok(do_search(idx, query, threshold, k))
+  case valid_query(query, threshold, k) {
+    False -> Error(Nil)
+    True ->
+      case idx.dimensions {
+        Some(expected) if expected != dimensions -> Error(Nil)
+        _ -> Ok(do_search(idx, query, threshold, k))
+      }
   }
+}
+
+fn valid_query(query: List(Float), threshold: Float, k: Int) -> Bool {
+  valid_vector(query) && threshold >=. -1.0 && threshold <=. 1.0 && k > 0
 }
 
 /// Uses hierarchical greedy beam search.

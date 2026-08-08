@@ -123,6 +123,7 @@ let assert Ok(cluster) = sharded.start_sharded("cluster", 4, None)
 - [Query DSL](docs/manual/query_dsl.md)
 - [Local MCP stdio adapter](docs/manual/mcp_stdio.md)
 - [Supervision](docs/manual/supervision.md)
+- [Vector search contract](docs/manual/vector_search.md)
 - [Distributed Guide](docs/distributed_guide.md)
 
 ## Current Recommendation

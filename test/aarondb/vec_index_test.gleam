@@ -160,14 +160,47 @@ pub fn mismatched_dimensions_are_rejected_test() {
   should.equal(vec_index.search(idx, [1.0, 0.0], 0.0, 10), [])
 }
 
-pub fn graph_has_edges_test() {
+pub fn invalid_vectors_and_queries_are_rejected_test() {
+  let idx = vec_index.new()
+  should.be_error(vec_index.try_insert(idx, fact.EntityId(1), []))
+  should.be_error(vec_index.try_insert(idx, fact.EntityId(1), [0.0, 0.0]))
+
+  let assert Ok(idx) = vec_index.try_insert(idx, fact.EntityId(1), [1.0, 0.0])
+
+  should.be_error(vec_index.try_search(idx, [], 0.0, 1))
+  should.be_error(vec_index.try_search(idx, [0.0, 0.0], 0.0, 1))
+  should.be_error(vec_index.try_search(idx, [1.0, 0.0], -1.1, 1))
+  should.be_error(vec_index.try_search(idx, [1.0, 0.0], 1.1, 1))
+  should.be_error(vec_index.try_search(idx, [1.0, 0.0], 0.0, 0))
+  // Total compatibility wrappers preserve their historic failure behavior.
+  should.equal(vec_index.search(idx, [0.0, 0.0], 0.0, 1), [])
+}
+
+pub fn threshold_is_inclusive_and_scores_are_descending_test() {
   let idx =
     vec_index.new()
-    |> vec_index.insert(fact.EntityId(1), [1.0, 0.0, 0.0])
-    |> vec_index.insert(fact.EntityId(2), [0.9, 0.1, 0.0])
-    |> vec_index.insert(fact.EntityId(3), [0.0, 1.0, 0.0])
+    |> vec_index.insert(fact.EntityId(1), [1.0, 0.0])
+    |> vec_index.insert(fact.EntityId(2), [0.8, 0.6])
 
-  // All entities should have search results via graph
-  let r1 = vec_index.search(idx, [0.95, 0.05, 0.0], 0.0, 10)
-  should.equal(list.length(r1), 3)
+  // The exact match is included at the inclusive upper boundary.
+  let exact = vec_index.search(idx, [1.0, 0.0], 1.0, 10)
+  should.equal(exact, [vec_index.SearchResult(fact.EntityId(1), 1.0)])
+
+  let results = vec_index.search(idx, [1.0, 0.0], -1.0, 10)
+  let assert Ok(first) = list.first(results)
+  let assert Ok(second) = results |> list.drop(1) |> list.first()
+  should.be_true(first.score >=. second.score)
+}
+
+pub fn delete_removes_a_result_from_a_subsequent_search_test() {
+  let idx =
+    vec_index.new()
+    |> vec_index.insert(fact.EntityId(1), [1.0, 0.0])
+    |> vec_index.insert(fact.EntityId(2), [0.0, 1.0])
+    |> vec_index.delete(fact.EntityId(1))
+
+  let results = vec_index.search(idx, [1.0, 0.0], -1.0, 10)
+  should.be_false(
+    list.any(results, fn(result) { result.entity == fact.EntityId(1) }),
+  )
 }
