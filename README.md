@@ -2,11 +2,11 @@
 
 > "Simplicity is not about making things easy. It is about untangling complexity." - Rich Hickey
 
-> **Supported deployment boundary:** embedded library plus optional local stdio MCP adapter. See [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md) before adopting MCP, auth, persistence, or distributed extensions.
+> **Current release line:** v4.0.0 hardens persistence, actor timeout, vector, and term-decoding boundaries while formalizing AaronDB as an embedded library with an optional local stdio MCP adapter. See [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md).
 
 AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest current shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
 
-This repository also contains experimental distributed, search, and cognitive layers, plus a Beta MCP server. Those subsystems are not all at the same maturity level. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
+This repository also contains local search, cognitive, sharding, and MCP extensions with deliberately bounded operational contracts. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
 
 ## Core Model
 
@@ -31,30 +31,34 @@ This repository also contains experimental distributed, search, and cognitive la
 | Core DB API (`aarondb`) | Stable | Primary strength of the repository |
 | Query DSL and pull APIs | Stable | Backed by passing tests |
 | Temporal querying and diff | Stable/Beta | Usable, but still tied to large core modules |
-| Graph, vector, BM25, federation | Beta | Implemented, but less bounded than core |
-| Sharding and distributed queries | Beta/Experimental | Works as scatter/gather; not a full distributed query fabric |
+| Graph, vector, BM25, federation | Beta | Implemented, with explicit vector dimension validation at index and retrieval boundaries |
+| Sharding and distributed queries | Local Beta | One-runtime scatter/gather only: no remote membership, failover, transactional migration, or exact global Avg/Median |
 | Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication). Retained as a documented stub. See `src/aarondb/raft.gleam` |
-| MCP server and agent tooling | Experimental | Partial tool coverage and explicit TODOs remain |
+| Mnesia persistence | Recovery-oriented | Initialization preserves incompatible schemas and returns an error; explicit backup/migration/reset is required |
+| MCP server and agent tooling | Local Beta | Local stdio JSON-RPC adapter exposes three implemented tools; no network listener or remote authentication |
 
 ## Installation
 
-Add `aarondb` to your `gleam.toml`:
+Add the current release to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "3.0.0"
+aarondb = "4.0.0"
 ```
 
-## Why 3.0.0 Is Better
+## What 4.0.0 Changes
 
-AaronDB 3.0.0 is a **breaking** cleanup release that removes experimental surface and dead weight.
+AaronDB 4.0.0 is a **breaking hardening release**. It makes previously implicit or unsafe boundary behavior explicit.
 
-- **Removed the GleamCMS layer** — the experimental mist/wisp/lustre HTTP/CMS product surface that was mixed into the DB repo. It was fully self-contained and never imported by the core, tests, or the MCP layer.
-- **Pruned 9 now-unused dependencies** — mist, wisp, lustre, gleam_http, simplifile, gleam_regexp, gleam_crypto, logging (direct deps 13→4; manifest packages 25→5).
-- **Bumped `gleam_stdlib` to 1.0** (zero breakage in this codebase).
-- **Demoted raft to a documented stub** — the vestigial leader-election state machine is unwired from the engine and the inert public `is_leader` API is removed.
-- CI and release workflows target the current Gleam toolchain on OTP 27.
-- The package remains green: 183 tests pass with zero warnings.
+- **Safe term decoding** — serialized rules and raw ETS terms now use safe Erlang external-term decoding and reject malformed or wrong-shaped payloads.
+- **Truthful actor timeouts** — startup honors the timeout supplied by callers; public actor operations return timeout errors rather than crashing on an unanswered receive.
+- **Vector dimension contracts** — HNSW indexes establish one dimension and reject mismatched insert/search vectors; retrieval skips incompatible stored vectors instead of truncating scores.
+- **Non-destructive Mnesia startup** — an incompatible `datoms` schema produces an error and preserves persisted data; backup/migration/reset is an explicit operator action.
+- **Local MCP is real, but local** — the stdio adapter supports `initialize`, `tools/list`, and the three implemented tools; it is not a network service.
+- **Release assurance and package trust** — CI builds docs and lints workflows; the repository now includes Apache-2.0 licensing and a security policy.
+- **Distributed limits are explicit** — sharding remains local Beta, Raft remains an inactive stub, and Mnesia remains recovery-oriented.
+
+See [CHANGELOG.md](CHANGELOG.md), [Feature Maturity](docs/feature_maturity.md), and [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md) for the supported contract.
 
 ## Basic Usage
 

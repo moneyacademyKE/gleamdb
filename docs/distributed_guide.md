@@ -24,4 +24,13 @@ This is useful for local parallelism, not remote clustering.
 
 ## Choosing sharding
 
-Use local sharding only when parallel local execution is valuable and the above constraints are acceptable. For exact global average/median, dynamic migration, remote membership, or HA, do not treat the current API as a solution; those require a separately designed distributed contract.
+Use local sharding only when parallel local execution is valuable and the above constraints are acceptable. It is unsuitable for any workflow that requires an atomic cross-shard write, source-of-truth migration, automatic recovery after a partial move, remote membership, or high availability.
+
+Before this feature can claim a broader distributed contract, it needs all of:
+
+1. A transactional or idempotent copy → verify → cut-over → retract migration protocol with interruption recovery.
+2. Exact aggregate reducers (sum/count state for averages; mergeable distribution or raw-value state for medians).
+3. Explicit membership, health, and failover semantics.
+4. Fault-injection tests for duplicate prevention, partial failure, and recovery.
+
+Until those exist, do not expose `sharded` as a remote cluster or HA service. For exact global average/median, dynamic migration, remote membership, or HA, use a separately designed distributed system.

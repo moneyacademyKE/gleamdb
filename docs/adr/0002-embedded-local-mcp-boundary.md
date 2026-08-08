@@ -8,7 +8,7 @@ Accepted
 
 AaronDB has a mature in-process temporal Datalog core, alongside extension layers with very different operational properties. The repository contains a capability model, a typed MCP request actor, local sharding helpers, a Mnesia adapter, and an election-only Raft state machine. Those components must not collectively imply that AaronDB is a secure network database, a distributed HA database, or a production MCP daemon.
 
-The current `auth` module decodes capability-shaped JSON but does not verify a signature, issuer, expiry, or audience. The current MCP server dispatches JSON-RPC requests in process; it has no stdio transport or network listener. Sharding is local scatter/gather execution with explicit migration gaps. Raft is deliberately unwired and has no replicated log. Mnesia has recovery coverage but no production multi-node validation.
+The current `auth` module decodes capability-shaped JSON but does not verify a signature, issuer, expiry, or audience. The MCP surface is a local stdio adapter over an in-process JSON-RPC dispatcher; it has no network listener. Sharding is local scatter/gather execution with explicit migration gaps. Raft is deliberately unwired and has no replicated log. Mnesia has recovery coverage and refuses incompatible schemas without modifying persisted data, but has no production multi-node validation.
 
 ## Decision
 
