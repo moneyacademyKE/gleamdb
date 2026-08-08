@@ -19,7 +19,8 @@ This document separates implemented capability from vision. The goal is to keep 
 | Schema constraints | Stable | Uniqueness, cardinality, check, composite validation in transactor | Validation cost may grow with data size |
 | Temporal querying | Beta | `query_at`, valid-time fields, temporal tests | Temporal semantics are coupled to general engine execution |
 | Graph algorithms | Beta | Query DSL support and tests | Execution complexity and planner boundaries |
-| Vector and BM25 search | Beta | Separate modules and tests | Hybrid retrieval story is broader than current interfaces |
+| Vector search | Beta | HNSW contract and regression tests | Approximate only; no deterministic graph topology, recall/latency SLA, or exact corpus API |
+| BM25 search | Beta | Local index contract, deterministic ranking, replacement/removal regression tests | Standalone primitive: no transaction-driven maintenance, query-DSL integration, hybrid scoring, persistence, or distributed contract |
 | Federation and virtual predicates | Beta | AST and tests exist | Operational contracts are still thin |
 | Reactive subscriptions and WAL-style hooks | Beta | Reactive module and tests | Behavior depends on actor interactions and timing |
 | Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Local scatter/gather only; cross-shard average/median are approximate and migration is explicitly unsupported |

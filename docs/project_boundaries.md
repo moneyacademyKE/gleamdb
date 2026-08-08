@@ -8,7 +8,7 @@ AaronDB currently contains several ideas in one repository. This document define
 | --- | --- | --- |
 | Core engine | Facts, transactions, indexes, query execution | Default identity of the project; embedded and trusted in-process |
 | Distributed layer | Sharding, routing, distributed query coordination | Optional local extension; no HA, migration, or remote-cluster contract |
-| Search layer | Vector, BM25, ART, hybrid retrieval | Optional extension with explicit cost and storage trade-offs |
+| Search layer | Vector, standalone BM25, ART | Optional local indexes with explicit contracts; hybrid retrieval and automatic DB integration are not supported |
 | Agent layer | MCP, RAG, capability-gated tools | Local process integration surface; stdio adapter is the next supported transport |
 | Auth layer | Capability checks | Local authorization model, not network authentication or signed identity |
 | Persistence | In-memory state plus Mnesia adapter | Recovery-oriented adapter, not a production multi-node guarantee |
@@ -27,7 +27,7 @@ AaronDB currently contains several ideas in one repository. This document define
 
 - Sharded fabric and distributed query helpers
 - Leader election and HA protocols
-- Vector and BM25 search adapters
+- Vector, standalone BM25, and ART search adapters
 - MCP and cognitive memory workflows
 
 ## Near-Term Rules For Changes

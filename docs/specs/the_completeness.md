@@ -90,13 +90,16 @@ sequence_diagram
 - [x] WHEN I execute it
 - [x] THEN the engine computes reductions in-stream without returning raw data.
 
-## Phase 3: Hybrid Intelligence (Tiered Memory)
-- [x] GIVEN a query with BM25 terms
-- [x] WHEN I execute it
-- [x] THEN the engine computes BM25 scores and merges them using the Weighted Union Combiner.
-- [x] GIVEN a custom attribute metric (Importance/Sentiment)
-- [x] WHEN I register it in the Extension Registry
-- [x] THEN the engine dispatches similarity lookups to the custom adapter.
+## Phase 3: Local Search Primitives
+
+- [x] GIVEN a caller-owned BM25 index
+- [x] WHEN documents are added, replaced, removed, or searched
+- [x] THEN the index preserves document statistics and returns deterministic local rankings.
+- [ ] GIVEN a database transaction and a query with BM25 terms
+- [ ] WHEN the engine executes it
+- [ ] THEN the transactor maintains BM25 state and the query engine performs text retrieval or hybrid ranking.
+
+The second scenario is intentionally not implemented: see `docs/manual/bm25_search.md`.
 
 ## Phase 4: Adaptive Stabilization (v2.2.0)
 - [x] GIVEN a persistent memory requirement in GClaw
@@ -127,5 +130,6 @@ sequence_diagram
 - [x] WHEN I use **Exhaustive Projections** with Sum Types
 - [x] THEN the compiler guarantees that every post state (Draft, Published, Archived) is handled in the SSG.
 
-## Phase 5: Autonomous Handoff
-PRD Implemented. All advanced features (Graph, Federation, Time Travel, Aggregates, Parallelism, Hybrid Search, Performance, Observability) verified with tests. 🧙🏾‍♂️
+## Phase 5: Bounded Extension Roadmap
+
+Graph, local federation, and search extensions remain Beta. The current supported contract is embedded/in-process execution. HNSW vector search and standalone BM25 behavior are documented under `docs/manual/`; neither implies hybrid retrieval, distributed coordination, or production service guarantees.

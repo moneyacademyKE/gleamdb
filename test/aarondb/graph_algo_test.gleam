@@ -946,7 +946,95 @@ pub fn strongly_connected_components_test() {
   should.be_true(scc_a != scc_d)
 }
 
-// Helper: find index of element in list
+pub fn graph_boundary_contract_test() {
+  let db_state = empty_graph_state()
+  let a = EntityId(1)
+  let b = EntityId(2)
+
+  // A directed edge does not imply its reverse, and a negative traversal
+  // depth is the same safe boundary as depth zero.
+  let facts = [graph_datom(a, "edge", b)]
+  let db_state = graph_state_with_edges(db_state, facts)
+  should.equal(graph.shortest_path(db_state, a, b, "edge", Some(0)), None)
+  should.equal(graph.shortest_path(db_state, b, a, "edge", None), None)
+  should.equal(graph.neighbors_khop(db_state, a, "edge", -1), [])
+  should.equal(graph.reachable(db_state, b, "edge"), [b])
+
+  // PageRank has no meaningful result for invalid parameters or an empty graph.
+  should.equal(dict.size(graph.pagerank(db_state, "edge", -0.1, 10)), 0)
+  should.equal(dict.size(graph.pagerank(db_state, "edge", 1.1, 10)), 0)
+  should.equal(dict.size(graph.pagerank(db_state, "edge", 0.85, 0)), 0)
+  should.equal(
+    dict.size(graph.pagerank(empty_graph_state(), "edge", 0.85, 10)),
+    0,
+  )
+}
+
+fn graph_datom(
+  source: fact.EntityId,
+  attribute: String,
+  target: fact.EntityId,
+) -> fact.Datom {
+  fact.Datom(
+    entity: source,
+    attribute: attribute,
+    value: Ref(target),
+    tx: 1,
+    tx_index: 0,
+    valid_time: 0,
+    operation: fact.Assert,
+  )
+}
+
+fn graph_state_with_edges(
+  db_state: types.DbState,
+  facts: List(fact.Datom),
+) -> types.DbState {
+  let eavt =
+    list.fold(facts, dict.new(), fn(idx, datom) {
+      index.insert_eavt(idx, datom, fact.All)
+    })
+  let aevt =
+    list.fold(facts, dict.new(), fn(idx, datom) {
+      index.insert_aevt(idx, datom, fact.All)
+    })
+  types.DbState(..db_state, eavt: eavt, aevt: aevt)
+}
+
+fn empty_graph_state() -> types.DbState {
+  types.DbState(
+    adapter: storage.ephemeral(),
+    eavt: dict.new(),
+    aevt: dict.new(),
+    avet: dict.new(),
+    bm25_indices: dict.new(),
+    latest_tx: 0,
+    subscribers: [],
+    schema: dict.new(),
+    functions: dict.new(),
+    composites: [],
+    reactive_actor: process.new_subject(),
+    followers: [],
+    is_distributed: False,
+    ets_name: None,
+    vec_index: vec_index.new(),
+    art_index: art.new(),
+    registry: dict.new(),
+    extensions: dict.new(),
+    predicates: dict.new(),
+    stored_rules: [],
+    virtual_predicates: dict.new(),
+    columnar_store: dict.new(),
+    config: types.Config(
+      parallel_threshold: 500,
+      batch_size: 100,
+      prefetch_enabled: False,
+      zero_copy_threshold: 10_000,
+    ),
+    query_history: [],
+  )
+}
+
 fn list_index(
   lst: List(fact.EntityId),
   target: fact.EntityId,
