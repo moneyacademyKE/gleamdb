@@ -28,7 +28,7 @@ pub type JsonRpcRequest {
     jsonrpc: String,
     id: Option(String),
     method: String,
-    params: Option(json.Json),
+    params: Option(decode.Dynamic),
   )
 }
 
@@ -206,7 +206,41 @@ fn handle_read(db: Db, args: decode.Dynamic) -> Result(json.Json, String) {
 }
 
 pub fn handle_request(db: Db, req: JsonRpcRequest) -> JsonRpcResponse {
+  case req.jsonrpc != "2.0" {
+    True ->
+      JsonRpcResponse(
+        "2.0",
+        req.id,
+        None,
+        Some(JsonRpcError(-32_600, "jsonrpc must be 2.0", None)),
+      )
+    False -> handle_method(db, req)
+  }
+}
+
+fn handle_method(db: Db, req: JsonRpcRequest) -> JsonRpcResponse {
   case req.method {
+    "initialize" ->
+      JsonRpcResponse(
+        "2.0",
+        req.id,
+        Some(
+          json.object([
+            #("protocolVersion", json.string("2024-11-05")),
+            #("capabilities", json.object([#("tools", json.object([]))])),
+            #(
+              "serverInfo",
+              json.object([
+                #("name", json.string("aarondb")),
+                #("version", json.string("3.0.0")),
+              ]),
+            ),
+          ]),
+        ),
+        None,
+      )
+    "notifications/initialized" ->
+      JsonRpcResponse("2.0", req.id, Some(json.object([])), None)
     "tools/list" -> {
       let result =
         json.object([
@@ -234,7 +268,7 @@ pub fn handle_request(db: Db, req: JsonRpcRequest) -> JsonRpcResponse {
             decode.success(#(name, arguments))
           }
 
-          case json.parse(json.to_string(params), call_decoder) {
+          case decode.run(params, call_decoder) {
             Ok(#(name, args)) -> {
               case execute_tool(db, name, args) {
                 Ok(res) -> JsonRpcResponse("2.0", req.id, Some(res), None)

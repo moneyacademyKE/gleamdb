@@ -47,14 +47,17 @@ pub fn zerocopy_binary_test() {
 
   case res {
     PullRawBinary(bin) -> {
-      // Assert that we successfully got a raw C-level payload
-      let _dyn = ets_index.deserialize_term(bin)
-      // If we reach here, it deserialized without crashing via erlang term_to_binary validation
+      let assert Ok(_dyn) = ets_index.deserialize_term(bin)
       Nil
     }
     _ -> should.fail()
     // Should not follow standard PullMap path when threshold exceeded
   }
+}
+
+pub fn zerocopy_rejects_malformed_binary_test() {
+  let malformed = <<255, 255, 255>>
+  should.equal(Error(Nil), ets_index.deserialize_term(malformed))
 }
 
 fn aarondb_create_facts(n: Int, acc: List(fact.Fact)) -> List(fact.Fact) {

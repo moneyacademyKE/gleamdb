@@ -81,12 +81,12 @@ pub fn serialize_term(term: any) -> BitArray {
 @external(erlang, "erlang", "term_to_binary")
 fn do_term_to_binary(data: any) -> BitArray
 
-pub fn deserialize_term(b: BitArray) -> dynamic.Dynamic {
+pub fn deserialize_term(b: BitArray) -> Result(dynamic.Dynamic, Nil) {
   do_binary_to_term(b)
 }
 
-@external(erlang, "erlang", "binary_to_term")
-fn do_binary_to_term(data: BitArray) -> dynamic.Dynamic
+@external(erlang, "aarondb_term_ffi", "decode_term")
+fn do_binary_to_term(data: BitArray) -> Result(dynamic.Dynamic, Nil)
 
 pub fn get_raw_binary(table: TableName, key: any) -> Result(BitArray, Nil) {
   do_get_raw_binary(table, key)

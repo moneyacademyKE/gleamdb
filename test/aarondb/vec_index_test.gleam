@@ -144,6 +144,22 @@ pub fn dimensions_test() {
 
 // --- NSW Graph Connectivity ---
 
+pub fn mismatched_dimensions_are_rejected_test() {
+  let assert Ok(idx) =
+    vec_index.new()
+    |> vec_index.try_insert(fact.EntityId(1), [1.0, 0.0, 0.0])
+
+  should.be_error(vec_index.try_insert(idx, fact.EntityId(2), [1.0, 0.0]))
+  should.be_error(vec_index.try_search(idx, [1.0, 0.0], 0.0, 10))
+
+  // The compatibility wrappers also refuse to score mismatched vectors.
+  should.equal(
+    vec_index.size(vec_index.insert(idx, fact.EntityId(2), [1.0, 0.0])),
+    1,
+  )
+  should.equal(vec_index.search(idx, [1.0, 0.0], 0.0, 10), [])
+}
+
 pub fn graph_has_edges_test() {
   let idx =
     vec_index.new()

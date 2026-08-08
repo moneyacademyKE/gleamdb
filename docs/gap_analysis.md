@@ -25,56 +25,45 @@ Supports core Datalog logic: pattern matching, `Bind`, graph algorithms
   memory-intensive on deep graphs and could benefit from query-planner
   optimizations or lazy stream evaluation.
 
-## 2. Distributed Operation and Raft
+## 2. Local Sharding and Raft
 
 **Current State:**
 
-Native sharding exists and distributed query helpers are implemented. Raft
-currently provides a leader-election state machine.
+Local sharding provides parallel scatter/gather work inside a BEAM runtime. Raft is an inactive election-only state-machine stub and is not part of the query or transaction path.
 
-**Gaps:**
+**Gaps and deliberate limits:**
 
-- Re-balancing of shards is completely manual. Dynamic re-sharding when nodes
-  crash or scale up is not yet implemented.
-- The `Distributed Sovereign` telemetry uses raw Erlang distribution (Global)
-  which does not scale beyond ~60-100 nodes. Transitioning to a Hash Ring
-  (e.g., Riak Core) is needed for massive scale.
-- Current distributed queries still rely on scatter/gather execution and do not
-  yet amount to a tightly bounded distributed query planner.
-- Raft claims should remain scoped to election and leadership behavior until a
-  fuller replicated-log story exists.
+- `migrate_shard_data` is an explicit not-implemented error; there is no dynamic re-sharding, retry, recovery, or failover contract.
+- Query coordination scans all local shards; there is no remote membership or bounded distributed query planner.
+- `Sum`, `Count`, `Min`, and `Max` are exact secondary reductions. `Avg` and `Median` are approximate from per-shard scalar results.
+- No Raft, quorum, replication, or high-availability claim is supported.
+
+See `docs/distributed_guide.md` and ADR 0002 for the supported boundary.
 
 ## 3. Cognitive Engine (MuninnDB Integration)
 
 **Current State:**
 
-Ported successfully to pure Gleam. `Engram` decay functions (ACT-R) and Hebbian
-learning are implemented and reachable dynamically via Datalog queries. MCP
-server support exists with a small implemented subset of tools.
+The active cognitive feature is the `Cognitive` Datalog clause implemented in `engine/cognitive.gleam`. It intersects stored `engram/concept` and `engram/context` facts and filters by explicit `engram/relevance`; it does not include the former unwired ACT-R/Hebbian scoring model.
 
 **Gaps:**
 
-- Core MCP tools (`remember`, `recall`, `read`) are explicitly mapped; the
-  broader MCP surface remains incomplete.
-- Adaptive active decay (ACT-R) is now applied periodically to the engram pool 
-  via background database ticks.
+- The local MCP stdio adapter implements only `remember`, `recall`, and `read`.
+- Adaptive decay, association learning, and probabilistic confidence are deliberate non-goals until a new engine-backed design defines their persistence and ranking semantics.
 
 ## 4. Security and Isolation
 
 **Current State:**
 
-No user authentication. Complete trust is assumed on the BEAM distribution
-network.
+The supported boundary is an embedded library and local child-process MCP adapter. Capability payloads are local authorization data, not user authentication or signed credentials.
 
-**Gaps:**
+**Gaps and deliberate limits:**
 
-- If exposed to external MCP agents directly over HTTP/SSE (currently stdio
-  only), a Vault or capability-based security model must be implemented to
-  prevent agents from corrupting the core transaction log.
+- Network exposure is not supported. Adding HTTP/SSE/TCP requires a new security ADR and a signed, expiring capability-token design before any listener is introduced.
 
 ## Immediate Action Items
 
-1. Keep the README and architecture docs aligned with exported APIs and tests.
-2. Continue separating core engine concerns from extension layers.
-3. Implement dynamic shard rebalancing only after the distributed contract is clearer.
-4. Expand MCP claims only when handlers and result formatting are complete.
+1. Keep README, architecture, and maturity docs aligned with exported APIs and tests.
+2. Keep extension boundaries explicit before expanding claims.
+3. Revisit migration, exact global aggregates, and HA only with a concrete distributed product commitment.
+4. Expand MCP tools only when handlers, schemas, and local protocol tests exist.

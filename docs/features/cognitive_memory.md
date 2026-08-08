@@ -1,73 +1,23 @@
 # Cognitive Memory & Semantic Retrieval
 
-> **Maturity: Experimental.** The cognitive clause is implemented and tested, but the full ACT-R decay and Hebbian learning lifecycle is still maturing. See `docs/feature_maturity.md`.
+> **Maturity: Beta.** AaronDB provides a tested `Cognitive` Datalog clause over explicitly stored engram facts. It does **not** implement adaptive ACT-R decay, Hebbian learning, or Bayesian updates. See `docs/feature_maturity.md` and [ADR 0002](../adr/0002-embedded-local-mcp-boundary.md).
 
-AaronDB provides a paradigm shift by merging deductive logic (Datalog) with
-inductive, associative memory (Cognitive Models) naturally in the database
-querying language.
+AaronDB combines ordinary Datalog structure with semantic lookup over engram facts. The authoritative implementation is `src/aarondb/engine/cognitive.gleam`.
 
-This mechanism derives from the integration of the MuninnDB Go engine, now
-completely native on the Erlang/BEAM VM via Gleam.
+## Data model
 
-## The Philosophical Foundation
+A cognitive query matches entities that have both:
 
-Traditional databases require you to know exactly *how* a relationship is encoded
-(Foreign Keys, explicit JOIN paths). Human memory works via associative semantic
-triggers: remembering "Apple" brings up "Red", "Fruit", and "Steve Jobs"
-depending strictly on the context and frequency of the firing.
+- an `engram/concept` fact,
+- an `engram/context` fact, and
+- optionally an `engram/relevance` numeric fact.
 
-By combining Datalog (`exact structure`) with Cognitive Primitives (`associative
-meaning`), AaronDB supports highly intelligent, context-aware queries.
-
-## Cognitive Primitives
-
-1. **ACT-R Base-Level Learning (Decay)**
-   Facts encoded as `Engrams` do not exist forever unconditionally. Their
-   "Activation Score" logarithmically decays over time unless they are actively
-   strengthened or retrieved. This mimics human memory and acts as an automatic
-   relevancy filter.
-
-2. **Hebbian Association**
-   "Nodes that fire together, wire together." When two distinct Engrams are
-   queried simultaneously within the same temporal context, the synaptic weight
-   (Hebbian Score) between them increases.
-
-3. **Bayesian Confidence**
-   A standard naive Bayes updater maintains probability confidence scores based
-   on evidence collection.
+The solver intersects active concept and context matches, then accepts entries meeting the caller's relevance threshold. Missing relevance defaults to `1.0`.
 
 ## Querying via Datalog
 
-We expose this to developers as a first-class Datalog predicate: `Cognitive()`.
+Use the `Cognitive` clause to bind matching engram entities alongside ordinary relational clauses. The exact builder and AST shapes are documented by the package API and tests.
 
-### Example: Semantic Association
+## Non-goals
 
-```gleam
-import aarondb/q
-import aarondb/shared/types.{Part}
-
-let query = q.new()
-  // Retrieve traditional user details
-  |> q.where(q.v("u"), "user/name", q.s("Alice"))
-  
-  // Mix in Cognitive association:
-  // Find concepts associated with the "context" node that pass the 0.75 threshold
-  |> q.cognitive(
-       concept: Part("AI_Agent"), 
-       context: Part("Trading_Strategy"), 
-       threshold: 0.75, 
-       engram_var: "strategy_node"
-     )
-  
-  // Use the resulting node back in relational logic
-  |> q.where(q.v("u"), "user/active_strategy", q.v("strategy_node"))
-  |> q.to_clauses()
-```
-
-### Automatic Execution
-
-Under the hood, AaronDB's logical navigator `navigator.gleam` costs the
-`Cognitive` predicate operation naturally alongside standard indices. It
-retrieves the vector or semantic associations from ETS indices, evaluates the
-mathematical decay algorithms concurrently, and yields bindings into the logical
-unification flow.
+The former unwired MuninnDB-derived `Engram` types and adaptive scoring math were removed so this is the only cognitive model in the repository. If adaptive learning is required later, introduce it as a new explicit engine feature with persistence semantics, ranking rules, and deterministic tests—do not reintroduce a parallel orphaned model.

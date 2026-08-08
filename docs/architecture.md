@@ -75,15 +75,15 @@ Current engine boundaries:
 
 ## Extension Layers
 
-These exist in the repository, but should be treated as optional layers over the core rather than the definition of AaronDB itself.
+These exist in the repository, but should be treated as optional layers over the core rather than the definition of AaronDB itself. Their supported deployment boundary is defined in [ADR 0002](adr/0002-embedded-local-mcp-boundary.md).
 
 | Layer | Current Role |
 | --- | --- |
-| Sharding | Parallel routing and scatter/gather query execution |
-| Raft | Leader-election state machine |
+| Sharding | Local parallel routing and scatter/gather query execution; Beta |
+| Raft | Inactive election-only state-machine stub; no runtime integration |
 | Search | ART, vector index, BM25 |
-| Agent tooling | MCP, RAG, capability-gated gateway |
-| CMS | GleamCMS application code |
+| Agent tooling | Local MCP actor, RAG, and capability checks; no transport or signed authentication claim |
+| Persistence | In-memory state plus recovery-oriented Mnesia adapter |
 
 ## Current Architectural Reality
 

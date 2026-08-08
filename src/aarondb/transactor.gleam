@@ -47,7 +47,11 @@ pub type Message {
   Compact(process.Subject(Nil))
   SetConfig(state.Config, process.Subject(Nil))
   Sync(process.Subject(Nil))
-  Boot(Option(String), storage.StorageAdapter, process.Subject(Nil))
+  Boot(
+    Option(String),
+    storage.StorageAdapter,
+    process.Subject(Result(Nil, String)),
+  )
   RegisterIndexAdapter(state.IndexAdapter, process.Subject(Nil))
   CreateIndex(String, String, String, process.Subject(Result(Nil, String)))
   CreateBM25Index(String, process.Subject(Result(Nil, String)))
@@ -71,27 +75,28 @@ pub fn start_named(
   name: String,
   store: storage.StorageAdapter,
 ) -> Result(process.Subject(Message), actor.StartError) {
-  do_start_named(store, False, Some(name))
+  do_start_named(store, False, Some(name), 1000)
 }
 
 pub fn start_distributed(
   name: String,
   store: storage.StorageAdapter,
 ) -> Result(process.Subject(Message), actor.StartError) {
-  do_start_named(store, True, Some(name))
+  do_start_named(store, True, Some(name), 1000)
 }
 
 pub fn start_with_timeout(
   store: storage.StorageAdapter,
-  _timeout_ms: Int,
+  timeout_ms: Int,
 ) -> Result(process.Subject(Message), actor.StartError) {
-  do_start_named(store, False, None)
+  do_start_named(store, False, None, timeout_ms)
 }
 
 fn do_start_named(
   store: storage.StorageAdapter,
   is_distributed: Bool,
   ets_name: Option(String),
+  timeout_ms: Int,
 ) -> Result(process.Subject(Message), actor.StartError) {
   let assert Ok(reactive_subject) = reactive.start_link()
 
@@ -138,20 +143,24 @@ fn do_start_named(
       let subj = started.data
       let reply = process.new_subject()
       process.send(subj, Boot(ets_name, store, reply))
-      let _ = process.receive(reply, 600_000)
+      case process.receive(reply, timeout_ms) {
+        Error(_) -> Error(actor.InitTimeout)
+        Ok(Error(_)) -> Error(actor.InitTimeout)
+        Ok(Ok(Nil)) -> {
+          let pid = process_extra.subject_to_pid(subj)
+          let _ = case is_distributed {
+            True -> Nil
+            False -> {
+              let _ = global.register("aarondb_leader", pid)
+              Nil
+            }
+          }
 
-      let pid = process_extra.subject_to_pid(subj)
-      let _ = case is_distributed {
-        True -> Nil
-        False -> {
-          let _ = global.register("aarondb_leader", pid)
-          Nil
+          // Start lifecycle actor
+          let _ = process.spawn(fn() { lifecycle_loop(subj) })
+          Ok(subj)
         }
       }
-
-      // Start lifecycle actor
-      let _ = process.spawn(fn() { lifecycle_loop(subj) })
-      Ok(subj)
     }
     Error(e) -> Error(e)
   }
@@ -194,10 +203,7 @@ pub fn set_schema(
   attr: String,
   config: fact.AttributeConfig,
 ) -> Result(Nil, String) {
-  let reply = process.new_subject()
-  process.send(subj, SetSchema(attr, config, reply))
-  let assert Ok(res) = process.receive(reply, 5000)
-  res
+  set_schema_with_timeout(subj, attr, config, 5000)
 }
 
 pub fn set_schema_with_timeout(
@@ -231,8 +237,10 @@ pub fn register_composite(
 ) -> Result(Nil, String) {
   let reply = process.new_subject()
   process.send(subj, RegisterComposite(attrs, reply))
-  let assert Ok(res) = process.receive(reply, 5000)
-  res
+  case process.receive(reply, 5000) {
+    Ok(res) -> res
+    Error(_) -> Error("Timeout registering composite")
+  }
 }
 
 pub fn register_predicate(
@@ -252,8 +260,10 @@ pub fn store_rule(
 ) -> Result(Nil, String) {
   let reply = process.new_subject()
   process.send(subj, StoreRule(rule, reply))
-  let assert Ok(res) = process.receive(reply, 5000)
-  res
+  case process.receive(reply, 5000) {
+    Ok(res) -> res
+    Error(_) -> Error("Timeout storing rule")
+  }
 }
 
 pub fn set_config(subj: process.Subject(Message), config: state.Config) -> Nil {
@@ -267,10 +277,7 @@ pub fn transact(
   subj: process.Subject(Message),
   facts: List(fact.Fact),
 ) -> Result(state.DbState, String) {
-  let reply = process.new_subject()
-  process.send(subj, Transact(facts, None, reply))
-  let assert Ok(res) = process.receive(reply, 5000)
-  res
+  transact_with_timeout(subj, facts, 5000)
 }
 
 pub fn transact_with_timeout(
@@ -292,8 +299,10 @@ pub fn retract(
 ) -> Result(state.DbState, String) {
   let reply = process.new_subject()
   process.send(subj, Retract(facts, None, reply))
-  let assert Ok(res) = process.receive(reply, 5000)
-  res
+  case process.receive(reply, 5000) {
+    Ok(res) -> res
+    Error(_) -> Error("Retraction timeout")
+  }
 }
 
 pub fn compute_next_state(
@@ -403,12 +412,19 @@ fn handle_message(
         Some(name) -> ets_index.init_tables(name)
         None -> Nil
       }
-      // Initialize Mnesia
-      let _ = mnesia.init_mnesia()
-
-      let new_state = runtime.recover_state(state)
-      process.send(reply, Nil)
-      actor.continue(new_state)
+      // Initialize Mnesia without ever rewriting incompatible persisted state.
+      let initialized = mnesia.init_mnesia()
+      case initialized {
+        Ok(Nil) -> {
+          let new_state = runtime.recover_state(state)
+          process.send(reply, Ok(Nil))
+          actor.continue(new_state)
+        }
+        Error(error) -> {
+          process.send(reply, Error(error))
+          actor.continue(state)
+        }
+      }
     }
     Transact(facts, vt, reply_to) -> {
       runtime.do_handle_transact(

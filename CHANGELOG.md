@@ -1,5 +1,39 @@
 # Changelog
 
+## 4.0.0 - 2026-08-08
+
+A **breaking hardening release** that makes AaronDB's serialization, actor, vector, persistence, and deployment boundaries explicit.
+
+### Added
+
+- A local newline-delimited JSON-RPC stdio MCP adapter for `initialize`, `tools/list`, and the implemented `muninn_remember`, `muninn_recall`, and `muninn_read` tools.
+- Apache-2.0 `LICENSE` and `SECURITY.md` with private vulnerability-reporting guidance and the supported local deployment boundary.
+- CI checks for `gleam docs build` and GitHub Actions workflow linting via `actionlint`.
+- Regression coverage for malformed term payloads and vector-dimension mismatch handling.
+
+### Changed
+
+- Rule and raw ETS term decoding now uses safe Erlang external-term decoding and returns `Result`, rejecting malformed or wrong-shaped payloads.
+- Actor startup observes its caller-provided timeout; schema, composite, rule, transaction, and retraction calls return explicit timeout errors instead of asserting on missing replies.
+- HNSW vector indexes establish a fixed dimension from the first vector. Mismatched insertions and searches are rejected; retrieval ignores incompatible vectors rather than silently truncating scores.
+- Mnesia initialization preserves an incompatible `datoms` table and returns a descriptive error. Operators must back up and migrate—or deliberately reset—the table themselves.
+- The former unwired MuninnDB-derived cognitive scoring/types were removed; `engine/cognitive` is the single authoritative cognitive model.
+- Documentation now defines local-only MCP, recovery-oriented Mnesia, local-Beta sharding, and inactive Raft as the current supported boundary.
+
+### Breaking changes
+
+- `aarondb/index/ets.deserialize_term` now returns `Result(dynamic.Dynamic, Nil)` instead of `dynamic.Dynamic`.
+- `storage/mnesia.init_mnesia` now returns `Result(Nil, String)` instead of `Nil`.
+- `VecIndex` now carries an index dimensionality contract; callers needing diagnostics should use `try_insert` and `try_search`.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam build`
+- `gleam docs build`
+- `actionlint`
+- `gleam test`: 178 passed, no failures.
+
 ## 3.0.0 - 2026-08-04
 
 A **breaking** cleanup release that removes the experimental CMS product surface and vestigial consensus scaffolding.

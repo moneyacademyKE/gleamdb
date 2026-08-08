@@ -337,7 +337,7 @@ pub fn pull(
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }
 
-/// Semantic cognitive search using ACT-R Decay and Hebbian weights
+/// Semantic cognitive search over stored concept, context, and relevance facts.
 pub fn cognitive(
   builder: QueryBuilder,
   concept: Part,

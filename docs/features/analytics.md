@@ -1,54 +1,23 @@
-# Sovereign Analytics (Distributed Aggregates & Parallelism) 🧙🏾‍♂️
+# Analytics
 
-GleamDB v1.9.0 introduces **Sovereign Intelligence**, transforming the engine from a passive store into an active analytical substrate.
+AaronDB supports aggregate clauses over its in-process query engine.
 
-## 1. Distributed Aggregates
+## Aggregate operations
 
-Query branches can now perform reduction operations in-place, avoiding the need to ship raw data to the application layer.
+- `Count`
+- `Sum`
+- `Min` / `Max`
+- `Avg`
+- `Median`
 
-### Supported Operations
-- `Count`: Number of matching datoms.
-- `Sum`: Sum of values (Int or Float).
-- `Min` / `Max`: Extremes of values (Numeric or String).
-- `Avg`: Arithmetic mean.
-- `Median`: Statistical median (P50).
+## Local sharded reduction
 
-### Distributed Coordinate Reduction (Phase 15)
+For the Beta local sharding extension, each shard evaluates its aggregate and the coordinator performs a second reduction.
 
-In sharded environments, aggregates are resolved via a **Two-Pass Reduction**:
-1.  **Partial Reduction**: Each shard computes the aggregate locally over its partition.
-2.  **Global Reduction**: The coordinator merges these shard-level results. For `Sum` and `Count`, it performs a secondary `Sum` over the partial results. For `Min`/`Max`, it selects the global extreme.
-This ensures correctness across distributed datasets without shipping raw facts over the network.
+- `Sum`, `Count`, `Min`, and `Max` are exact under the local shard model.
+- `Avg` is an **average of local averages** and is therefore approximate when shard sizes differ.
+- `Median` is a **median of local medians** and is therefore approximate unless shard distributions happen to align.
 
-### Usage
-Aggregates are defined in the query body using the `Aggregate` clause.
+Exact global average requires per-shard sums and counts. Exact global median requires raw values or mergeable distribution state. AaronDB intentionally does not claim either protocol today.
 
-```gleam
-import gleamdb/shared/types.{Aggregate, Sum}
-
-let query = [
-  // 1. Match entities and capture "age" var
-  gleamdb.p(#(types.Var("e"), "age", types.Var("val"))),
-  
-  // 2. Aggregate "val" into "total_age" using Sum
-  Aggregate("total_age", Sum, "val", []) 
-]
-```
-
-## 2. Parallel Query Execution
-
-Analytical queries often touch massive datasets. GleamDB now automatically parallelizes execution.
-
-- **Auto-Sharding**: If an intermediate query context grows beyond **500 items**, the engine automatically shards the workload.
-- **Concurrent Processing**: Shards are processed in parallel using lightweight Erlang processes (`spawn`).
-- **Transparent**: No API changes required. The engine handles distribution and result collection automatically.
-
-### Performance
-For large joins or scans, parallel execution can yield **linear speedups** proportional to available CPU cores, as the overhead of process spawning is amortized over large data chunks.
-
-## 3. Temporal Sharding (v2.2.0)
-
-Phase 4 introduced specialized sharded read-paths for temporal range queries. By targeting specific time-slices across the sharded fabric, retrieval latency for "since" queries is minimized.
-
-- **Speedup**: Verified **59x faster** retrieval on 10k-record datasets.
-- **Native Implementation**: Integrated into `sharded.since` and `sharded_query.query_since`.
+See the [local sharding guide](../distributed_guide.md) and [ADR 0002](../adr/0002-embedded-local-mcp-boundary.md) for the deployment boundary and non-goals.
