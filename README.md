@@ -117,6 +117,7 @@ let assert Ok(cluster) = sharded.start_sharded("cluster", 4, None)
 - [Feature Maturity](docs/feature_maturity.md)
 - [Project Boundaries](docs/project_boundaries.md)
 - [Query DSL](docs/manual/query_dsl.md)
+- [Local MCP stdio adapter](docs/manual/mcp_stdio.md)
 - [Supervision](docs/manual/supervision.md)
 - [Distributed Guide](docs/distributed_guide.md)
 
