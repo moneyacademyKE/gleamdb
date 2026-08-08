@@ -1,5 +1,40 @@
 # Changelog
 
+## 4.1.0 - 2026-08-08
+
+A **local retrieval and analytics maturity release**. Vector, BM25, graph analytics, and federation are promoted to Stable only within their explicitly documented local contracts.
+
+### Added
+
+- Deterministic HNSW test configuration, an exact cosine-search oracle, committed recall corpus, lifecycle churn regression, and a reproducible vector evidence harness.
+- BM25 Analyzer v1 documentation, golden ranking/lifecycle corpus, incremental-versus-rebuild equivalence tests, and a reproducible local operation benchmark.
+- Bounded graph traversal and global-analytics APIs with typed node, edge, result, visit, and iteration budget errors; graph fixtures for sparse, dense, cyclic, disconnected, chain, and hub shapes.
+- Local federation query execution over named actors with deterministic source order, per-row provenance, typed fail-fast unavailable/timeout errors, and a reproducible multi-source soak harness.
+- CI evidence job that runs the vector, BM25, graph, and federation benchmark/regression harnesses.
+
+### Changed
+
+- Feature maturity now labels vector, BM25, graph, and federation **Stable only for their documented local contracts**.
+- Graph callers are directed to bounded APIs for arbitrary data; legacy unbounded APIs remain compatibility paths.
+- Federation is explicitly local in-runtime read composition. A source failure returns no partial result.
+
+### Explicit non-goals
+
+This release does **not** add remote federation, replication, high availability, failover, migration, quorum, coordinated writes, global snapshots, sharding promotion, Raft activation, or universal latency/memory/recall guarantees.
+
+### Verification
+
+- `gleam format --check src test bench`
+- `gleam build`
+- `gleam docs build`
+- `actionlint`
+- `git diff --check`
+- `gleam test --target erlang`: 199 passed, no failures
+- `gleam run -m vector_hnsw_benchmark`
+- `gleam run -m bm25_benchmark`
+- `gleam run -m graph_benchmark`
+- `gleam run -m federation_benchmark`
+
 ## 4.0.0 - 2026-08-08
 
 A **breaking hardening release** that makes AaronDB's serialization, actor, vector, persistence, and deployment boundaries explicit.

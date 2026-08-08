@@ -22,6 +22,20 @@ jobs:
       - run: gleam docs build
       - run: gleam test
 
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          gleam-version: "1.17.0"
+          otp-version: "27"
+          rebar3-version: "3"
+      - run: gleam run -m vector_hnsw_benchmark
+      - run: gleam run -m bm25_benchmark
+      - run: gleam run -m graph_benchmark
+      - run: gleam run -m federation_benchmark
+
   workflow-lint:
     runs-on: ubuntu-latest
     steps:

@@ -1,120 +1,57 @@
-# Roadmap: The Sovereign Transition 🧙🏾‍♂️
+# AaronDB roadmap
 
-GleamDB v1.3.0 was a milestone of recovery. Phases 21-23 represent **Resilient Maturity** — every critical gap from the original roadmap is now closed.
+AaronDB is a **local, embedded Datalog database**. The supported deployment boundary is defined by [ADR 0002](adr/0002-embedded-local-mcp-boundary.md): in-process use and local stdio MCP. It does not claim remote federation, replication, high availability, coordinated writes, sharding migration, or Raft-backed consensus.
 
-## [x] COMPLETED: The Sovereign Performance (Phase 18-20)
-- **Batch Persistence**: Single I/O commit per transaction in `transactor.gleam`.
-- **Silicon Saturation**: Concurrent read-concurrency via ETS indices.
-- **Durable Fabric**: Mnesia substrate for BEAM-native persistence and distribution.
-- **Set-based Diffing**: O(N) Reactive Datalog scaling.
+## Current baseline
 
-## [x] COMPLETED: Resilient Maturity (Phase 21-23)
+The retrieval/query-contract baseline is on `master` in `f0fe892` (PR #8). It defines explicit local contracts for approximate HNSW vector search, caller-owned BM25, directed graph operations, and local federation. These four areas remain **Beta** until their individual evidence gates are complete.
 
-### [x] ID Sovereignty (Phase 21)
-`fact.Ref(EntityId)` variant de-complects identity from data at the type level. Used across all 5 engine solver paths, Pull API, and transactor.
+The authoritative maturity labels are maintained in [Feature Maturity](feature_maturity.md). Historical phase documents record prior implementation work; they are not current support or performance claims.
 
-### [x] Raft Election Protocol (Phase 22)
-Pure state machine (`raft.gleam`) with term-based voting, heartbeat liveness (50ms), randomized election timeout (150-300ms), majority quorum, automatic step-down. De-complected from replication.
+## Stable-maturity sequence
 
-### [x] NSW Vector Index (Phase 23)
-`vec_index.gleam` provides O(log N) navigable small-world graph for similarity search. Transactor auto-indexes Vec values. Engine falls back to AVET scan if index is empty.
+### 1. Vector / HNSW evidence
 
-### [x] Vector Enrichment (Phase 23)
-`vector.gleam` extended with `euclidean_distance`, `normalize`, `dimensions`.
+- Maintain a single cosine-search contract, deterministic test configuration, exact finite-corpus oracle, and committed recall corpus.
+- Prove insert, replace, delete, and rebuild behavior with a churn suite.
+- Commit reproducible benchmark inputs, environment, and results.
 
-### [x] Native Sharding (Phase 24)
-Horizontal partitioning of facts across strictly isolated local shards (`gleamdb/sharded`). Linear scaling with logical cores on M2/M3 silicon (>10k durable writes/sec).
+**Promotion gate:** deterministic recall and lifecycle evidence plus a measured local benchmark envelope. HNSW remains approximate; no universal latency, memory, or recall SLA is implied.
 
-### [x] Deterministic Identity (Phase 25)
-`fact.deterministic_uid` and `fact.phash2` ensure ID consistency across distributed nodes without coordination. Enables idempotent ingestion.
+### 2. BM25 local retrieval evidence
 
-### [x] The Intelligent Engine (Phase 26)
-Native **Graph Algorithms** (ShortestPath, PageRank), **Data Federation** (Virtual Predicates), and **Time Travel** (Diff API).
+- Maintain a versioned analyzer and parameter-validation contract.
+- Keep golden ranking fixtures for Unicode, empty/repeated text, ties, replacement, and removal.
+- Verify incremental state is equivalent to a clean rebuild.
+- Commit reproducible local operation benchmarks and state the caller-owned concurrency/persistence boundary.
 
-### [x] The Speculative Soul (Phase 27)
-Frictionless "Database as a Value" with `with_facts`, recursive `pull`, and a navigational Entity API.
+**Promotion gate:** deterministic local ranking and lifecycle evidence with a documented analyzer and benchmark envelope. Query-engine integration and hybrid retrieval are separate product work.
 
-### [x] The Logical Navigator (Phase 28)
-Cost-based query optimization and heuristic join reordering.
+### 3. Graph analytics evidence
 
-### [x] The Chronos Sovereign (Phase 29)
-Bitemporal data model (Valid Time + System Time) and `as_of_valid` time travel.
+- Maintain one directed graph model for edges, self-loops, duplicate edges, missing vertices, and result ordering.
+- Add canonical fixtures and invariants for every public graph algorithm.
+- Bound traversal depth, result volume, visits, and iterative convergence; invalid or over-budget work must fail predictably.
+- Commit representative sparse, dense, cyclic, disconnected, chain, and hub benchmark fixtures.
 
-### [x] The Completeness (Phase 30)
-Atomic Transaction Functions and Composite Constraints for total integrity.
+**Promotion gate:** every public graph operation has correctness, budget, and benchmark evidence.
 
-### [x] Sovereign Intelligence (Phase 31)
-distributed Aggregates (`Sum`, `Count`, `Avg`, `Max`, `Min`, `Median`) and Parallel Query Execution.
+### 4. Local federation evidence
 
-### [x] Graph Algorithm Suite (Phase 32)
-9 native graph predicates: `ShortestPath`, `PageRank`, etc.
+- Execute reads against named local sources in deterministic source order.
+- Preserve source provenance and namespace identity by source.
+- Make source failures typed and fail-fast; the default API must not leak partial results.
+- Test schema incompatibility, duplicate identities, stopped sources, timeouts, query failures, and multi-source soak behavior.
 
-### [x] HNSW Vector Indexing (Phase 44)
-Hierarchical layers for true $O(\log N)$ scaling on 1M+ vector datasets. Replaced flat NSW with robust HNSW.
+**Promotion gate:** tested local source execution and fail-fast behavior. This remains distinct from sharding, remote federation, replication, or coordinated writes.
 
-### [x] Advanced Join Optimization (ART) (Phase 45)
-Adaptive Radix Tree integration for multi-way join optimization.
+## Explicitly deferred
 
-### [x] Local Search Primitives (BM25)
-BM25 is a caller-owned local index with deterministic update and ranking semantics. It is **not** integrated with the query engine or weighted vector scoring; see `docs/manual/bm25_search.md`.
+- **Sharding:** local scatter/gather remains Beta until transactional migration and exact cross-shard aggregate semantics exist.
+- **Raft:** inactive election-only stub; it has no transport, replicated log, persistence, or runtime integration.
+- **Mnesia:** recovery-oriented adapter; no production multi-node or fault-tolerance claim.
+- **Network MCP/auth:** local stdio is supported. Network exposure requires a separate signed-auth and service-operational design.
 
-### [x] Adaptive Stabilization (Phase 4)
-Restored durable silicon persistence (5-arity Datoms) and achieved **59x speedup** on sharded temporal query read-paths.
+## Release discipline
 
-### [x] The Federated Pulse (Phase 15)
-Multi-shard coordinate reduction for distributed aggregates and real-time WAL Streaming.
-
----
-## [x] COMPLETED: Architectural Simplicity Audit (Phase 60.1)
-- **Fact Purity**: Moving storage-related types out of `fact.gleam` to `storage/internal.gleam`.
-- **AST Cleansing**: Removing optimization-specific constructors (`BloomJoin`, `BloomFilter`) from the public AST.
-- **Unified Equality**: replaced `engine.compare_values` with the centralized `fact.compare`.
-- **DSL Parameterization**: Allowed user control over `pagerank` and `shortest_path` parameters.
-- **Sharding Refactor**: Moved towards a pure-functional rebalancing logic `f(Distribution) -> MigrationPlan`.
-
----
-## [x] COMPLETED: Maintenance & Stability (v2.2.0)
-- **Refactor**: Replaced deprecated `int.range` with loop-based `int.range` fold to optimize allocation.
-- **Verification**: Zero-warning build and 59x verified performance gain across sharded fabric.
-
-### [x] HTAP Foundations (Phase 55)
-Columnar Attribute Chunks and Vectorized NIFs for analytical scan acceleration.
-
-### [x] Adaptive Performance Cracking (Phase 56)
-JIT cracking indices that self-refine based on predicate usage patterns.
-
-### [x] Tiered Sovereignty (Phase 57)
-Cold data spilling to disk/Mnesia with morsel-driven query load balancing.
-
-### [x] JIT-Lite Predicate Optimization (Phase 58)
-Function-closure compilation for hot virtual predicates, bypassing interpreter overhead.
-
-### [x] Advanced Features (Phase 59)
-- **Predictive Prefetching**: `query_history` ring buffer + `prefetch.analyze_history` heuristic on `Tick`.
-- **Zero-Copy Serialization**: `PullRawBinary(BitArray)`, `Blob(BitArray)`, `term_to_binary` FFI bypass in `engine.pull`.
-
-### [x] Graph Traversal DSL (Phase 60)
-- **Constrained Pathfinding**: `TraversalStep(Out | In)` DSL over existing EAVT index.
-- **Depth-Limited Engine**: Recursive `do_traverse` with `DepthLimitExceeded` guard.
-- Inspired by SurrealDB gap analysis; delivers graph utility without complecting the data model.
-
-## Future Directions (v2.4.0+)
-
-| Item | Description | Priority |
-| :--- | :--- | :--- |
-| **Persistent Pull Cache** | LRU cache for hot pull patterns | Low |
-| **Per-Hop LIMIT** | Pagination guard on graph traversal supernodes | Medium |
-| **Agent Memory Context** | First-class AI context graphs (SurrealDB 3.0 parity) | High |
-| **Dynamic Re-sharding** | Automated shard re-balancing on node churn | High |
-| **Hash Ring (Riak Core)** | Scalable distribution beyond 100 nodes | High |
-| **Vault Security Model** | Capability-based security for external agents | Medium |
-| **Dynamic Re-sharding** | Automated shard re-balancing on node churn | High |
-| **Hash Ring (Riak Core)** | Scalable distribution beyond 100 nodes | High |
-| **Vault Security Model** | Capability-based security for external agents | Medium |
-
----
-
-## Current Status: Phase 60 (Graph Traversal DSL) — v2.4.0
-All original roadmap items through Phase 60 are complete. 125 tests passing. The system is correct, durable, speculative, parallel, horizontally scalable, graph-intelligent, temporally optimized, predictively prefetched, zero-copy serialized, and graph-traversable.
-
-🧙🏾‍♂️: "Simple made easy. Every capability earned through the EAVT foundation, never complected."
+A capability is labeled Stable only after its documented exit gate has committed evidence and all required checks pass: formatting, build, tests, docs build, workflow linting, and the applicable regression/benchmark checks.

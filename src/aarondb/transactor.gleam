@@ -191,6 +191,18 @@ pub fn log_query(
   Nil
 }
 
+pub fn get_state_with_timeout(
+  subj: process.Subject(Message),
+  timeout_ms: Int,
+) -> Result(state.DbState, String) {
+  let reply = process.new_subject()
+  process.send(subj, GetState(reply))
+  case process.receive(reply, timeout_ms) {
+    Ok(state) -> Ok(state)
+    Error(_) -> Error("Timeout getting database state")
+  }
+}
+
 pub fn get_state(subj: process.Subject(Message)) -> state.DbState {
   let reply = process.new_subject()
   process.send(subj, GetState(reply))

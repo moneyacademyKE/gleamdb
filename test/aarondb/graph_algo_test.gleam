@@ -970,6 +970,82 @@ pub fn graph_boundary_contract_test() {
   )
 }
 
+pub fn bounded_reachable_contract_test() {
+  let a = EntityId(1)
+  let b = EntityId(2)
+  let c = EntityId(3)
+  let db_state =
+    graph_state_with_edges(empty_graph_state(), [
+      graph_datom(a, "edge", b),
+      graph_datom(b, "edge", c),
+    ])
+
+  let assert Ok(limits) = graph.traversal_limits(3, 3)
+  let assert Ok(reached) = graph.reachable_bounded(db_state, a, "edge", limits)
+  should.equal(list.length(reached), 3)
+
+  let assert Ok(visit_limited) = graph.traversal_limits(2, 3)
+  should.equal(
+    graph.reachable_bounded(db_state, a, "edge", visit_limited),
+    Error(graph.VisitBudgetExceeded),
+  )
+
+  let assert Ok(result_limited) = graph.traversal_limits(3, 2)
+  should.equal(
+    graph.reachable_bounded(db_state, a, "edge", result_limited),
+    Error(graph.ResultLimitExceeded),
+  )
+  should.equal(graph.traversal_limits(0, 1), Error(graph.InvalidLimit))
+}
+
+pub fn bounded_global_graph_contract_test() {
+  let a = EntityId(1)
+  let b = EntityId(2)
+  let c = EntityId(3)
+  let db_state =
+    graph_state_with_edges(empty_graph_state(), [
+      graph_datom(a, "edge", b),
+      graph_datom(b, "edge", c),
+    ])
+
+  let assert Ok(limits) = graph.graph_limits(3, 2, 2)
+  let assert Ok(ranks) =
+    graph.pagerank_bounded(db_state, "edge", 0.85, 2, limits)
+  should.equal(dict.size(ranks), 3)
+  let assert Ok(cycles) = graph.cycle_detect_bounded(db_state, "edge", limits)
+  should.equal(cycles, [])
+  let assert Ok(centrality) =
+    graph.betweenness_centrality_bounded(db_state, "edge", limits)
+  should.equal(dict.size(centrality), 3)
+  let assert Ok(Ok(order)) =
+    graph.topological_sort_bounded(db_state, "edge", limits)
+  should.equal(list.length(order), 3)
+  let assert Ok(components) =
+    graph.strongly_connected_components_bounded(db_state, "edge", limits)
+  should.equal(dict.size(components), 3)
+
+  let assert Ok(edge_limited) = graph.graph_limits(3, 1, 2)
+  should.equal(
+    graph.cycle_detect_bounded(db_state, "edge", edge_limited),
+    Error(graph.EdgeBudgetExceeded),
+  )
+  let assert Ok(node_limited) = graph.graph_limits(2, 2, 2)
+  should.equal(
+    graph.strongly_connected_components_bounded(db_state, "edge", node_limited),
+    Error(graph.NodeBudgetExceeded),
+  )
+  let assert Ok(iteration_limited) = graph.graph_limits(3, 2, 1)
+  should.equal(
+    graph.pagerank_bounded(db_state, "edge", 0.85, 2, iteration_limited),
+    Error(graph.IterationBudgetExceeded),
+  )
+  should.equal(graph.graph_limits(0, 1, 1), Error(graph.InvalidGraphLimit))
+  should.equal(
+    graph.pagerank_bounded(db_state, "edge", 1.1, 1, limits),
+    Error(graph.InvalidPageRankParameters),
+  )
+}
+
 fn graph_datom(
   source: fact.EntityId,
   attribute: String,

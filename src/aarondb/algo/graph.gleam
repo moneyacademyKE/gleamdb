@@ -8,7 +8,62 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
 
-// A simple queue implementation using two lists
+/// Explicit local work limits for graph traversals.
+///
+/// A limit counts visited nodes, including the starting node. Callers that need
+/// unbounded traversal must opt into it through the legacy APIs; new callers
+/// should use the bounded variants below.
+pub type TraversalLimits {
+  TraversalLimits(max_visits: Int, max_results: Int)
+}
+
+/// Typed outcomes for bounded traversal requests.
+pub type TraversalError {
+  InvalidLimit
+  VisitBudgetExceeded
+  ResultLimitExceeded
+}
+
+pub fn traversal_limits(
+  max_visits: Int,
+  max_results: Int,
+) -> Result(TraversalLimits, TraversalError) {
+  case max_visits > 0 && max_results > 0 {
+    True -> Ok(TraversalLimits(max_visits, max_results))
+    False -> Error(InvalidLimit)
+  }
+}
+
+/// Explicit local work limits for global graph algorithms.
+///
+/// Bounded global APIs construct at most `max_edges` selected reference edges,
+/// admit at most `max_nodes` endpoints, and reject PageRank requests above
+/// `max_iterations`. They return a typed error rather than producing a partial
+/// graph result.
+pub type GraphLimits {
+  GraphLimits(max_nodes: Int, max_edges: Int, max_iterations: Int)
+}
+
+/// Typed outcomes for bounded global graph requests.
+pub type GraphError {
+  InvalidGraphLimit
+  NodeBudgetExceeded
+  EdgeBudgetExceeded
+  IterationBudgetExceeded
+  InvalidPageRankParameters
+}
+
+pub fn graph_limits(
+  max_nodes: Int,
+  max_edges: Int,
+  max_iterations: Int,
+) -> Result(GraphLimits, GraphError) {
+  case max_nodes > 0 && max_edges > 0 && max_iterations > 0 {
+    True -> Ok(GraphLimits(max_nodes, max_edges, max_iterations))
+    False -> Error(InvalidGraphLimit)
+  }
+}
+
 type Queue(a) {
   Queue(in: List(a), out: List(a))
 }
@@ -163,6 +218,51 @@ pub fn pagerank(
   }
 }
 
+pub fn pagerank_bounded(
+  state: state.DbState,
+  attr: String,
+  damping: Float,
+  iterations: Int,
+  limits: GraphLimits,
+) -> Result(Dict(EntityId, Float), GraphError) {
+  let GraphLimits(_, _, max_iterations) = limits
+  case damping <. 0.0 || damping >. 1.0 || iterations <= 0 {
+    True -> Error(InvalidPageRankParameters)
+    False -> {
+      case iterations > max_iterations {
+        True -> Error(IterationBudgetExceeded)
+        False -> {
+          case build_graph_bounded(state, attr, limits) {
+            Error(error) -> Error(error)
+            Ok(edges) -> Ok(pagerank_from_graph(edges, damping, iterations))
+          }
+        }
+      }
+    }
+  }
+}
+
+fn pagerank_from_graph(
+  edges: Graph,
+  damping: Float,
+  iterations: Int,
+) -> Dict(EntityId, Float) {
+  let nodes = get_all_nodes(edges)
+  case set.size(nodes) == 0 {
+    True -> dict.new()
+    False -> {
+      let n = int.to_float(set.size(nodes))
+      let initial_rank = 1.0 /. n
+      let ranks =
+        list.fold(set.to_list(nodes), dict.new(), fn(acc, node) {
+          dict.insert(acc, node, initial_rank)
+        })
+      let #(incoming, out_degree) = preprocess_graph(edges, nodes)
+      pagerank_iter(nodes, incoming, out_degree, ranks, damping, iterations, n)
+    }
+  }
+}
+
 // Graph: Node -> List(Neighbor)
 type Graph =
   Dict(EntityId, List(EntityId))
@@ -179,6 +279,74 @@ fn build_graph(state: state.DbState, attr: String) -> Graph {
       _ -> graph
     }
   })
+}
+
+fn build_graph_bounded(
+  state: state.DbState,
+  attr: String,
+  limits: GraphLimits,
+) -> Result(Graph, GraphError) {
+  let GraphLimits(max_nodes, max_edges, _) = limits
+  build_graph_bounded_from_datoms(
+    index.filter_by_attribute(state.aevt, attr),
+    dict.new(),
+    set.new(),
+    0,
+    max_nodes,
+    max_edges,
+  )
+}
+
+fn build_graph_bounded_from_datoms(
+  datoms: List(fact.Datom),
+  graph: Graph,
+  nodes: Set(EntityId),
+  edge_count: Int,
+  max_nodes: Int,
+  max_edges: Int,
+) -> Result(Graph, GraphError) {
+  case datoms {
+    [] -> Ok(graph)
+    [datom, ..rest] -> {
+      case datom.value {
+        Ref(target) -> {
+          case edge_count >= max_edges {
+            True -> Error(EdgeBudgetExceeded)
+            False -> {
+              let next_nodes =
+                nodes |> set.insert(datom.entity) |> set.insert(target)
+              case set.size(next_nodes) > max_nodes {
+                True -> Error(NodeBudgetExceeded)
+                False -> {
+                  let outgoing =
+                    dict.get(graph, datom.entity) |> result.unwrap([])
+                  let next_graph =
+                    dict.insert(graph, datom.entity, [target, ..outgoing])
+                  build_graph_bounded_from_datoms(
+                    rest,
+                    next_graph,
+                    next_nodes,
+                    edge_count + 1,
+                    max_nodes,
+                    max_edges,
+                  )
+                }
+              }
+            }
+          }
+        }
+        _ ->
+          build_graph_bounded_from_datoms(
+            rest,
+            graph,
+            nodes,
+            edge_count,
+            max_nodes,
+            max_edges,
+          )
+      }
+    }
+  }
 }
 
 fn get_all_nodes(graph: Graph) -> Set(EntityId) {
@@ -253,6 +421,61 @@ pub fn reachable(
   |> set.to_list()
 }
 
+pub fn reachable_bounded(
+  state: state.DbState,
+  from: EntityId,
+  edge_attr: String,
+  limits: TraversalLimits,
+) -> Result(List(EntityId), TraversalError) {
+  let TraversalLimits(max_visits, max_results) = limits
+  reachable_bounded_bfs(
+    state,
+    edge_attr,
+    new_queue() |> push_queue(from),
+    set.from_list([from]),
+    max_visits,
+    max_results,
+  )
+}
+
+fn reachable_bounded_bfs(
+  state: state.DbState,
+  attr: String,
+  q: Queue(EntityId),
+  visited: Set(EntityId),
+  max_visits: Int,
+  max_results: Int,
+) -> Result(List(EntityId), TraversalError) {
+  case set.size(visited) > max_visits {
+    True -> Error(VisitBudgetExceeded)
+    False -> {
+      case set.size(visited) > max_results {
+        True -> Error(ResultLimitExceeded)
+        False -> {
+          case pop_queue(q) {
+            Error(_) -> Ok(set.to_list(visited))
+            Ok(#(current, new_q)) -> {
+              let neighbors = get_neighbors(state, current, attr)
+              let new_neighbors =
+                list.filter(neighbors, fn(n) { !set.contains(visited, n) })
+              let new_visited = list.fold(new_neighbors, visited, set.insert)
+              let next_q = list.fold(new_neighbors, new_q, push_queue)
+              reachable_bounded_bfs(
+                state,
+                attr,
+                next_q,
+                new_visited,
+                max_visits,
+                max_results,
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 fn reachable_bfs(
   state: state.DbState,
   attr: String,
@@ -272,21 +495,31 @@ fn reachable_bfs(
   }
 }
 
-// --- ConnectedComponents: Label each node with a component ID ---
-
-pub fn connected_components(
+/// Labels directed flood-fill components after enforcing local graph limits.
+pub fn connected_components_bounded(
   state: state.DbState,
   edge_attr: String,
-) -> Dict(EntityId, Int) {
-  let graph = build_graph(state, edge_attr)
-  let all_nodes = get_all_nodes(graph)
-  cc_flood(state, edge_attr, set.to_list(all_nodes), set.new(), dict.new(), 0)
+  limits: GraphLimits,
+) -> Result(Dict(EntityId, Int), GraphError) {
+  case build_graph_bounded(state, edge_attr, limits) {
+    Error(error) -> Error(error)
+    Ok(graph) -> Ok(connected_components_from_graph(graph))
+  }
 }
 
-fn cc_flood(
-  state: state.DbState,
-  attr: String,
+fn connected_components_from_graph(graph: Graph) -> Dict(EntityId, Int) {
+  cc_flood_graph(
+    get_all_nodes(graph) |> set.to_list(),
+    graph,
+    set.new(),
+    dict.new(),
+    0,
+  )
+}
+
+fn cc_flood_graph(
   remaining: List(EntityId),
+  graph: Graph,
   visited: Set(EntityId),
   labels: Dict(EntityId, Int),
   component_id: Int,
@@ -295,20 +528,63 @@ fn cc_flood(
     [] -> labels
     [node, ..rest] -> {
       case set.contains(visited, node) {
-        True -> cc_flood(state, attr, rest, visited, labels, component_id)
+        True -> cc_flood_graph(rest, graph, visited, labels, component_id)
         False -> {
-          // BFS flood-fill from this node
-          let component_nodes = reachable(state, node, attr)
-          let new_visited = list.fold(component_nodes, visited, set.insert)
-          let new_labels =
-            list.fold(component_nodes, labels, fn(acc, n) {
-              dict.insert(acc, n, component_id)
+          let component_nodes = reachable_graph(graph, node)
+          let next_visited = list.fold(component_nodes, visited, set.insert)
+          let next_labels =
+            list.fold(component_nodes, labels, fn(labels, member) {
+              dict.insert(labels, member, component_id)
             })
-          cc_flood(state, attr, rest, new_visited, new_labels, component_id + 1)
+          cc_flood_graph(
+            rest,
+            graph,
+            next_visited,
+            next_labels,
+            component_id + 1,
+          )
         }
       }
     }
   }
+}
+
+fn reachable_graph(graph: Graph, start: EntityId) -> List(EntityId) {
+  reachable_graph_bfs(
+    graph,
+    new_queue() |> push_queue(start),
+    set.from_list([start]),
+  )
+  |> set.to_list()
+}
+
+fn reachable_graph_bfs(
+  graph: Graph,
+  q: Queue(EntityId),
+  visited: Set(EntityId),
+) -> Set(EntityId) {
+  case pop_queue(q) {
+    Error(_) -> visited
+    Ok(#(current, next_q)) -> {
+      let unseen =
+        dict.get(graph, current)
+        |> result.unwrap([])
+        |> list.filter(fn(node) { !set.contains(visited, node) })
+      let next_visited = list.fold(unseen, visited, set.insert)
+      let q = list.fold(unseen, next_q, push_queue)
+      reachable_graph_bfs(graph, q, next_visited)
+    }
+  }
+}
+
+// --- ConnectedComponents: Label each node with a component ID ---
+
+pub fn connected_components(
+  state: state.DbState,
+  edge_attr: String,
+) -> Dict(EntityId, Int) {
+  let graph = build_graph(state, edge_attr)
+  connected_components_from_graph(graph)
 }
 
 // --- Neighbors: K-hop neighborhood (bounded BFS) ---
@@ -353,6 +629,23 @@ fn khop_bfs(
   }
 }
 
+/// Detects directed cycles after enforcing local graph limits.
+pub fn cycle_detect_bounded(
+  state: state.DbState,
+  edge_attr: String,
+  limits: GraphLimits,
+) -> Result(List(List(EntityId)), GraphError) {
+  case build_graph_bounded(state, edge_attr, limits) {
+    Error(error) -> Error(error)
+    Ok(graph) -> Ok(cycle_detect_from_graph(graph))
+  }
+}
+
+fn cycle_detect_from_graph(graph: Graph) -> List(List(EntityId)) {
+  let node_list = get_all_nodes(graph) |> set.to_list()
+  cd_search(graph, node_list, set.new(), set.new(), [], [])
+}
+
 // --- CycleDetect: Find all cycles in a directed graph (DFS back-edge) ---
 
 pub fn cycle_detect(
@@ -360,9 +653,7 @@ pub fn cycle_detect(
   edge_attr: String,
 ) -> List(List(EntityId)) {
   let graph = build_graph(state, edge_attr)
-  let all_nodes = get_all_nodes(graph)
-  let node_list = set.to_list(all_nodes)
-  cd_search(graph, node_list, set.new(), set.new(), [], [])
+  cycle_detect_from_graph(graph)
 }
 
 fn cd_search(
@@ -443,6 +734,27 @@ fn extract_cycle_loop(
   }
 }
 
+/// Runs directed Brandes centrality after enforcing local graph limits.
+pub fn betweenness_centrality_bounded(
+  state: state.DbState,
+  edge_attr: String,
+  limits: GraphLimits,
+) -> Result(Dict(EntityId, Float), GraphError) {
+  case build_graph_bounded(state, edge_attr, limits) {
+    Error(error) -> Error(error)
+    Ok(graph) -> Ok(betweenness_from_graph(graph))
+  }
+}
+
+fn betweenness_from_graph(graph: Graph) -> Dict(EntityId, Float) {
+  let node_list = get_all_nodes(graph) |> set.to_list()
+  let scores =
+    list.fold(node_list, dict.new(), fn(acc, n) { dict.insert(acc, n, 0.0) })
+  list.fold(node_list, scores, fn(acc, source) {
+    bc_from_source(graph, source, node_list, acc)
+  })
+}
+
 // --- BetweennessCentrality: Brandes' algorithm O(V*E) ---
 
 pub fn betweenness_centrality(
@@ -450,17 +762,7 @@ pub fn betweenness_centrality(
   edge_attr: String,
 ) -> Dict(EntityId, Float) {
   let graph = build_graph(state, edge_attr)
-  let all_nodes = get_all_nodes(graph)
-  let node_list = set.to_list(all_nodes)
-
-  // Initialize scores to 0.0
-  let scores =
-    list.fold(node_list, dict.new(), fn(acc, n) { dict.insert(acc, n, 0.0) })
-
-  // Run BFS from each source and accumulate
-  list.fold(node_list, scores, fn(acc, source) {
-    bc_from_source(graph, source, node_list, acc)
-  })
+  betweenness_from_graph(graph)
 }
 
 fn bc_from_source(
@@ -568,17 +870,22 @@ fn bc_bfs_loop(
   }
 }
 
-// --- TopologicalSort: Kahn's algorithm (BFS-based) ---
-
-pub fn topological_sort(
+/// Topologically sorts a bounded directed graph or returns typed budget errors.
+pub fn topological_sort_bounded(
   state: state.DbState,
   edge_attr: String,
-) -> Result(List(EntityId), List(EntityId)) {
-  // Returns Ok(ordered) if DAG, Error(cycle_nodes) if cycles exist
-  let graph = build_graph(state, edge_attr)
-  let all_nodes = get_all_nodes(graph)
+  limits: GraphLimits,
+) -> Result(Result(List(EntityId), List(EntityId)), GraphError) {
+  case build_graph_bounded(state, edge_attr, limits) {
+    Error(error) -> Error(error)
+    Ok(graph) -> Ok(topological_sort_from_graph(graph))
+  }
+}
 
-  // Compute in-degree for each node
+fn topological_sort_from_graph(
+  graph: Graph,
+) -> Result(List(EntityId), List(EntityId)) {
+  let all_nodes = get_all_nodes(graph)
   let in_degree =
     dict.fold(
       graph,
@@ -592,18 +899,30 @@ pub fn topological_sort(
         })
       },
     )
-
-  // Find all nodes with in-degree 0
   let zero_in =
-    dict.fold(in_degree, [], fn(acc, node, deg) {
-      case deg {
-        0 -> [node, ..acc]
-        _ -> acc
+    dict.fold(in_degree, [], fn(acc, node, degree) {
+      case degree == 0 {
+        True -> [node, ..acc]
+        False -> acc
       }
     })
+  topo_kahn(
+    graph,
+    list.fold(zero_in, new_queue(), push_queue),
+    in_degree,
+    [],
+    set.size(all_nodes),
+  )
+}
 
-  let q = list.fold(zero_in, new_queue(), push_queue)
-  topo_kahn(graph, q, in_degree, [], set.size(all_nodes))
+// --- TopologicalSort: Kahn's algorithm (BFS-based) ---
+
+pub fn topological_sort(
+  state: state.DbState,
+  edge_attr: String,
+) -> Result(List(EntityId), List(EntityId)) {
+  let graph = build_graph(state, edge_attr)
+  topological_sort_from_graph(graph)
 }
 
 fn topo_kahn(
@@ -669,8 +988,25 @@ pub fn strongly_connected_components(
   edge_attr: String,
 ) -> Dict(EntityId, Int) {
   let graph = build_graph(state, edge_attr)
-  let all_nodes = get_all_nodes(graph)
+  strongly_connected_components_from_graph(graph)
+}
 
+/// Labels strongly connected components after enforcing local graph limits.
+pub fn strongly_connected_components_bounded(
+  state: state.DbState,
+  edge_attr: String,
+  limits: GraphLimits,
+) -> Result(Dict(EntityId, Int), GraphError) {
+  case build_graph_bounded(state, edge_attr, limits) {
+    Error(error) -> Error(error)
+    Ok(graph) -> Ok(strongly_connected_components_from_graph(graph))
+  }
+}
+
+fn strongly_connected_components_from_graph(
+  graph: Graph,
+) -> Dict(EntityId, Int) {
+  let all_nodes = get_all_nodes(graph)
   let ts =
     TarjanState(
       index: 0,
@@ -681,7 +1017,6 @@ pub fn strongly_connected_components(
       components: dict.new(),
       comp_id: 0,
     )
-
   let final_ts =
     set.fold(all_nodes, ts, fn(ts, node) {
       case dict.has_key(ts.indices, node) {
@@ -689,7 +1024,6 @@ pub fn strongly_connected_components(
         False -> tarjan_dfs(graph, node, ts)
       }
     })
-
   final_ts.components
 }
 
