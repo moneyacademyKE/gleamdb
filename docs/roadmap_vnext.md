@@ -55,8 +55,8 @@ Hierarchical layers for true $O(\log N)$ scaling on 1M+ vector datasets. Replace
 ### [x] Advanced Join Optimization (ART) (Phase 45)
 Adaptive Radix Tree integration for multi-way join optimization.
 
-### [x] Hybrid Intelligence (Phase 3 & 4)
-Integrated BM25 (keyword) and weighted vector scoring within GClaw. Tiered registry for custom inference metrics.
+### [x] Local Search Primitives (BM25)
+BM25 is a caller-owned local index with deterministic update and ranking semantics. It is **not** integrated with the query engine or weighted vector scoring; see `docs/manual/bm25_search.md`.
 
 ### [x] Adaptive Stabilization (Phase 4)
 Restored durable silicon persistence (5-arity Datoms) and achieved **59x speedup** on sharded temporal query read-paths.

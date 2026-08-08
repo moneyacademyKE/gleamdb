@@ -31,7 +31,7 @@ This repository also contains local search, cognitive, sharding, and MCP extensi
 | Core DB API (`aarondb`) | Stable | Primary strength of the repository |
 | Query DSL and pull APIs | Stable | Backed by passing tests |
 | Temporal querying and diff | Stable/Beta | Usable, but still tied to large core modules |
-| Graph, vector, BM25, federation | Beta | Implemented, with explicit vector dimension validation at index and retrieval boundaries |
+| Graph, vector, BM25, federation | Beta | Vector has an explicit HNSW contract; BM25 is a standalone local index with deterministic lifecycle/ranking semantics; graph and federation remain bounded extensions |
 | Sharding and distributed queries | Local Beta | One-runtime scatter/gather only: no remote membership, failover, transactional migration, or exact global Avg/Median |
 | Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication). Retained as a documented stub. See `src/aarondb/raft.gleam` |
 | Mnesia persistence | Recovery-oriented | Initialization preserves incompatible schemas and returns an error; explicit backup/migration/reset is required |
@@ -124,6 +124,7 @@ let assert Ok(cluster) = sharded.start_sharded("cluster", 4, None)
 - [Local MCP stdio adapter](docs/manual/mcp_stdio.md)
 - [Supervision](docs/manual/supervision.md)
 - [Vector search contract](docs/manual/vector_search.md)
+- [BM25 search contract](docs/manual/bm25_search.md)
 - [Distributed Guide](docs/distributed_guide.md)
 
 ## Current Recommendation
