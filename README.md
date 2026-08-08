@@ -125,6 +125,7 @@ let assert Ok(cluster) = sharded.start_sharded("cluster", 4, None)
 - [Supervision](docs/manual/supervision.md)
 - [Vector search contract](docs/manual/vector_search.md)
 - [BM25 search contract](docs/manual/bm25_search.md)
+- [Local federation contract](docs/manual/local_federation.md)
 - [Distributed Guide](docs/distributed_guide.md)
 
 ## Current Recommendation
