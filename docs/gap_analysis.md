@@ -48,16 +48,12 @@ currently provides a leader-election state machine.
 
 **Current State:**
 
-Ported successfully to pure Gleam. `Engram` decay functions (ACT-R) and Hebbian
-learning are implemented and reachable dynamically via Datalog queries. MCP
-server support exists with a small implemented subset of tools.
+The active cognitive feature is the `Cognitive` Datalog clause implemented in `engine/cognitive.gleam`. It intersects stored `engram/concept` and `engram/context` facts and filters by explicit `engram/relevance`; it does not include the former unwired ACT-R/Hebbian scoring model.
 
 **Gaps:**
 
-- Core MCP tools (`remember`, `recall`, `read`) are explicitly mapped; the
-  broader MCP surface remains incomplete.
-- Adaptive active decay (ACT-R) is now applied periodically to the engram pool 
-  via background database ticks.
+- The local MCP stdio adapter implements only `remember`, `recall`, and `read`.
+- Adaptive decay, association learning, and probabilistic confidence are deliberate non-goals until a new engine-backed design defines their persistence and ranking semantics.
 
 ## 4. Security and Isolation
 

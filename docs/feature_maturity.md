@@ -27,7 +27,7 @@ This document separates implemented capability from vision. The goal is to keep 
 | MCP server | Beta | Three tools (remember, recall, read), JSON serialization, typed actor | No stdio transport yet; local process integration only after ADR 0002 transport work lands |
 | Capability authorization | Local-only | `src/aarondb/auth.gleam`, gateway tests | JSON capabilities are not signed credentials; no network authentication claim |
 | Mnesia persistence | Recovery-oriented | Adapter plus recovery test coverage | No production multi-node/failure contract |
-| Cognitive memory layer | Experimental | Pure `erf`/`scoring` modules are unit-tested; engine has its own working `Cognitive` clause solver | The pure modules are not integrated with the engine solver — decide integration vs removal |
+| Cognitive memory layer | Beta | `engine/cognitive.gleam` implements the tested `Cognitive` clause solver | Relevance is currently explicit stored data (`engram/relevance`); no adaptive learning or decay model is claimed |
 
 ## Adoption Guidance
 
