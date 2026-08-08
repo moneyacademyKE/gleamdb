@@ -1,3 +1,10 @@
+//// # cognitive/scoring — retention/confidence math (ported; currently unwired)
+////
+//// Pure cognitive-memory scoring: Ebbinghaus forgetting with a floor, stability
+//// growth, Hebbian association updates, softmax, and Bayesian confidence
+//// updates. NOT imported by the engine. Retained as a tested pure library
+//// pending integration; covered by `test/cognitive_test.gleam`.
+
 import gleam/float
 import gleam/list
 

@@ -4,7 +4,7 @@
 
 AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest current shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
 
-This repository also contains experimental distributed, search, MCP, and cognitive layers. Those subsystems are not all at the same maturity level. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
+This repository also contains experimental distributed, search, and cognitive layers, plus a Beta MCP server. Those subsystems are not all at the same maturity level. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
 
 ## Core Model
 
@@ -52,7 +52,7 @@ AaronDB 3.0.0 is a **breaking** cleanup release that removes experimental surfac
 - **Bumped `gleam_stdlib` to 1.0** (zero breakage in this codebase).
 - **Demoted raft to a documented stub** — the vestigial leader-election state machine is unwired from the engine and the inert public `is_leader` API is removed.
 - CI and release workflows target the current Gleam toolchain on OTP 27.
-- The package remains green: 169 tests pass with zero warnings.
+- The package remains green: 183 tests pass with zero warnings.
 
 ## Basic Usage
 

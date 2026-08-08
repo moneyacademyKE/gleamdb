@@ -147,15 +147,17 @@ pub fn max(
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }
 
-/// Placeholder for similarity search
+/// Vector similarity search: binds `variable` to entities whose stored vector
+/// is within `threshold` of `vector`, resolved by the engine's vector/HNSW
+/// index. (Previously this emitted a value-equality `Positive` clause — a
+/// placeholder — now it emits the real `ast.Similarity` clause.)
 pub fn similar(
   builder: QueryBuilder,
-  entity: Part,
-  attr: String,
+  variable: String,
   vector: List(Float),
-  _threshold: Float,
+  threshold: Float,
 ) -> QueryBuilder {
-  let clause = Positive(#(entity, attr, Val(fact.Vec(vector))))
+  let clause = ast.Similarity(variable, Val(fact.Vec(vector)), threshold)
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }
 

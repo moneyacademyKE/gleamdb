@@ -2,7 +2,9 @@ import aarondb
 import aarondb/auth
 import aarondb/mcp/server
 import gleam/dynamic/decode
+import gleam/erlang/process
 import gleam/json
+import gleam/option.{None, Some}
 import gleeunit/should
 
 pub fn mcp_security_test() {
@@ -84,6 +86,19 @@ pub fn mcp_security_test() {
     json.parse(json.to_string(recall_valid_args), decode.dynamic) |> unwrap
   let res5 = server.execute_tool(db, "muninn_recall", recall_valid_req)
   should.be_ok(res5)
+
+  let assert Ok(server_subject) = server.start(db)
+  let reply = process.new_subject()
+  process.send(
+    server_subject,
+    server.Request(
+      server.JsonRpcRequest("2.0", Some("1"), "tools/list", None),
+      reply,
+    ),
+  )
+  let assert Ok(response) = process.receive(reply, 1000)
+  should.be_true(response.result != None)
+  process.send(server_subject, server.Stop)
 }
 
 fn unwrap(res) {

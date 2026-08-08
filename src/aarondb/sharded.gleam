@@ -439,23 +439,20 @@ fn coordinate_reduce(
           let #(var, func) = agg_pair
           let shard_vals = list.filter_map(members, fn(m) { dict.get(m, var) })
 
-          let final_val = case func {
-            ast.Sum | ast.Count -> {
-              // FOR SUM and COUNT, the secondary reduction is a SUM of shard results.
-              aarondb_aggregate(shard_vals, ast.Sum)
-              |> result.unwrap(fact.Int(0))
+          let final_val = {
+            // Secondary reduction over per-shard aggregate results.
+            // Sum/Count/Min/Max combine exactly (cross-shard count = sum of
+            // per-shard counts). Avg/Median are APPROXIMATE here: each shard
+            // has already reduced to a scalar, so we compute the
+            // average-of-averages / median-of-medians. The exact global value
+            // would need per-shard counts (Avg) or all raw values (Median),
+            // which this pre-aggregation pass does not carry.
+            let secondary = case func {
+              ast.Count -> ast.Sum
+              other -> other
             }
-            ast.Min ->
-              aarondb_aggregate(shard_vals, ast.Min)
-              |> result.unwrap(fact.Int(0))
-            ast.Max ->
-              aarondb_aggregate(shard_vals, ast.Max)
-              |> result.unwrap(fact.Int(0))
-            _ -> {
-              // Average/Median are not perfectly supported in this pass without more metadata.
-              // We return the first one or a placeholder to avoid crash.
-              list.first(shard_vals) |> result.unwrap(fact.Int(0))
-            }
+            aarondb_aggregate(shard_vals, secondary)
+            |> result.unwrap(fact.Int(0))
           }
           dict.insert(row_acc, var, final_val)
         })
@@ -626,21 +623,19 @@ pub fn rebalance(
 }
 
 /// Manually migrate data from one shard to another.
+///
+/// ⚠️ NOT YET IMPLEMENTED. A correct implementation must scan the source
+/// shard's facts, apply `filter`, transact the matches into the destination
+/// shard (and retract from the source) under transaction safety, then return
+/// the count moved. Returns an explicit error rather than a silent `Ok(0)`
+/// that would falsely claim success. No callers exist today.
 pub fn migrate_shard_data(
-  db: query_types.ShardedDb(transactor.Db),
-  from_shard: Int,
+  _db: query_types.ShardedDb(transactor.Db),
+  _from_shard: Int,
   _to_shard: Int,
   _filter: fn(fact.Fact) -> Bool,
 ) -> Result(Int, String) {
-  use _shard_db <- result.try(
-    dict.get(db.shards, from_shard)
-    |> result.map_error(fn(_) { "Source shard not found" }),
-  )
-
-  // High-level: identify items, batch move
-  // In Rich Hickey style: we are transforming the state of the cluster
-  Ok(0)
-  // Placeholder for migration count
+  Error("migrate_shard_data is not implemented — see doc comment")
 }
 
 /// Dynamically add a new shard to the cluster.

@@ -43,27 +43,26 @@ fn greedy_reorder(
   remaining: List(BodyClause),
   bound_vars: Set(String),
 ) -> List(BodyClause) {
-  case remaining {
-    [] -> []
-    _ -> {
-      let #(best, others) = find_best_clause(remaining, bound_vars)
+  case find_best_clause(remaining, bound_vars) {
+    Ok(#(best, others)) -> {
       let clause_vars = get_clause_vars(best)
       let next_bound = set.union(bound_vars, clause_vars)
       [best, ..greedy_reorder(others, next_bound)]
     }
+    Error(Nil) -> []
   }
 }
 
 fn find_best_clause(
   clauses: List(BodyClause),
   bound_vars: Set(String),
-) -> #(BodyClause, List(BodyClause)) {
+) -> Result(#(BodyClause, List(BodyClause)), Nil) {
   let scored = list.map(clauses, fn(c) { #(c, estimate_cost(c, bound_vars)) })
   let sorted = list.sort(scored, fn(a, b) { int.compare(a.1, b.1) })
 
   case sorted {
-    [#(best, _), ..rest] -> #(best, list.map(rest, fn(pair) { pair.0 }))
-    _ -> panic as "Empty clause list in find_best_clause"
+    [#(best, _), ..rest] -> Ok(#(best, list.map(rest, fn(pair) { pair.0 })))
+    [] -> Error(Nil)
   }
 }
 

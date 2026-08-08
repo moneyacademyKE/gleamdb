@@ -1,3 +1,10 @@
+//// # storage/mnesia — Mnesia-backed durable StorageAdapter
+////
+//// Thin Gleam wrapper over the `aarondb_mnesia_ffi` Erlang NIF: creates a
+//// disc-copy `datoms` schema and persists/recovers datoms transactionally.
+//// Coverage: the round-trip (persist → restart → recover) is exercised by
+//// `recovery_durability_test` in `test/aarondb/history_test.gleam`.
+
 import aarondb/fact.{type Datom}
 import aarondb/shared/ast.{type Clause}
 import aarondb/storage.{type StorageAdapter, type StorageError, TransactionError}
