@@ -1,13 +1,15 @@
 # BM25 Search Contract
 
-AaronDB's `aarondb/index/bm25` module is an in-memory BM25 index for a single string attribute. It is **Beta** and currently a standalone index primitive: it is not yet exposed through the database query DSL or maintained automatically by database transactions.
+AaronDB's `aarondb/index/bm25` module is **Analyzer v1**, an in-memory BM25 index for one string attribute. It is a standalone local index primitive: it is not exposed through the database query DSL or maintained automatically by database transactions.
 
-## Text analysis
+## Analyzer v1
 
 - Text is lowercased.
 - ASCII letters (`a-z`) and digits (`0-9`) form tokens.
 - Every other grapheme is a token boundary.
-- The index does not currently provide Unicode-aware tokenisation, stemming, stop-word removal, synonyms, or configurable analyzers.
+- The index does not provide Unicode-aware tokenisation, stemming, stop-word removal, synonyms, or configurable analyzers.
+
+Changing these rules is an analyzer-version change and must not silently alter existing ranking behavior.
 
 ## Document lifecycle
 
@@ -25,6 +27,12 @@ Documents are keyed by `EntityId`.
 - `search(index, query, k1, b, limit)` returns positive-score hits only, ordered by descending score and then ascending entity ID. This tie-break makes equal-score results deterministic.
 - `limit` must be positive; invalid parameters or limits return `[]`.
 
+## Evidence
+
+A committed golden corpus covers replacement, removal, deterministic ties, empty documents, ASCII token boundaries, and the Unicode boundary. Incremental lifecycle state is checked against a clean `build` reconstruction for equal document statistics and ordered results; see `docs/reports/2026-08-08-bm25-correctness-evidence.md`.
+
+`docs/reports/2026-08-08-bm25-benchmark.md` records the reproducible local operation harness and its concurrency/persistence boundary.
+
 ## Scope limits
 
 This contract does not claim:
@@ -32,6 +40,6 @@ This contract does not claim:
 - database-integrated text queries or transaction-driven BM25 maintenance;
 - hybrid BM25/vector score combination semantics;
 - persistent or distributed BM25 indexes;
-- benchmarked ranking, update throughput, or latency guarantees.
+- concurrent mutation safety.
 
-Those are separate milestones. Until a transactor/query-engine integration exists, use this module deliberately as a caller-owned local index.
+Until a transactor/query-engine integration exists, use this module deliberately as a caller-owned local index.
