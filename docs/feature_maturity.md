@@ -24,7 +24,7 @@ This document separates implemented capability from vision. The goal is to keep 
 | Reactive subscriptions and WAL-style hooks | Beta | Reactive module and tests | Behavior depends on actor interactions and timing |
 | Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Local scatter/gather only; cross-shard average/median are approximate and migration is explicitly unsupported |
 | Raft / HA | Inactive stub | Pure election-only state machine in `src/aarondb/raft.gleam` | No log replication, transport, or runtime integration; explicitly outside the supported boundary |
-| MCP server | Beta | Three tools (remember, recall, read), JSON serialization, typed actor | No stdio transport yet; local process integration only after ADR 0002 transport work lands |
+| MCP server | Beta | Local stdio JSON-RPC adapter, three tools, JSON serialization, typed actor | Local child-process transport only; no network listener |
 | Capability authorization | Local-only | `src/aarondb/auth.gleam`, gateway tests | JSON capabilities are not signed credentials; no network authentication claim |
 | Mnesia persistence | Recovery-oriented | Adapter plus recovery test coverage | No production multi-node/failure contract |
 | Cognitive memory layer | Beta | `engine/cognitive.gleam` implements the tested `Cognitive` clause solver | Relevance is currently explicit stored data (`engram/relevance`); no adaptive learning or decay model is claimed |

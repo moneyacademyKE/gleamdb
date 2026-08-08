@@ -12,10 +12,11 @@
 //// (AppendEntries, commit index, log matching, apply) was never present, so
 //// it could not deliver replicated consistency on its own.
 ////
-//// The pure protocol logic is sound and covered by `test/aarondb/raft_test`.
-//// It is retained as a deliberate, documented stub — a clustering seed, not
-//// active code. To revive: design a transport + peer config, add the missing
-//// replication half, and re-introduce a raft field on `DbState`.
+//// The pure protocol logic is covered by `test/aarondb/raft_test`. It is
+//// retained as a deliberate, documented stub — a clustering seed, not active
+//// code. Do not partially activate it. Revival requires an approved distributed
+//// design with peer transport/configuration, durable state, AppendEntries/log
+//// replication, membership changes, quorum commit, and partition/failure tests.
 
 import gleam/erlang/process.{type Pid}
 import gleam/list

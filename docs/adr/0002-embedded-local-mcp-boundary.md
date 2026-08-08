@@ -36,9 +36,9 @@ Capability tokens remain an in-process authorization model. They are not authent
 
 ## Consequences
 
-- The next MCP work is a small stdio transport over the existing `mcp/server` actor, with process-level tests.
+- Local MCP transport is a small stdio adapter over the existing `mcp/server` actor, with protocol-focused tests.
 - `auth` remains deliberately limited to local capability checks; network authentication is deferred rather than partially implemented.
-- Cognitive modules must be either integrated into the active solver with defined semantics or removed as an orphaned parallel model.
+- The orphaned cognitive modules were removed; `engine/cognitive` is the single authoritative cognitive implementation.
 - Sharding remains Beta until a product commitment funds transactional migration and exact distributed aggregate semantics.
 - Raft remains an inactive, documented stub. Mnesia remains recovery-oriented until operational failure testing establishes a broader contract.
 
