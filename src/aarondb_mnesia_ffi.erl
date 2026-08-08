@@ -4,32 +4,64 @@
 init() ->
     case mnesia:system_info(is_running) of
         yes -> ok;
-        _ -> 
+        _ ->
             _ = mnesia:create_schema([node()]),
             application:ensure_all_started(mnesia)
     end,
-    
-    ExpectedAttrs = [entity, attribute, value, tx, tx_index, valid_time, operation],
-    try mnesia:table_info(datoms, attributes) of
-        ExpectedAttrs -> ok;
-        _ -> 
-            error_logger:info_msg("Schema mismatch for table 'datoms'. Deleting and recreating.~n"),
-            mnesia:delete_table(datoms)
-    catch
-        exit:{aborted, _} -> ok % Table does not exist
-    end,
 
+    ExpectedAttrs = [entity, attribute, value, tx, tx_index, valid_time, operation],
+    case table_attributes(datoms) of
+        {ok, ExpectedAttrs} ->
+            {ok, nil};
+        {ok, ActualAttrs} ->
+            {error, schema_mismatch_message(ExpectedAttrs, ActualAttrs)};
+        missing ->
+            create_datoms_table(ExpectedAttrs)
+    end.
+
+table_attributes(Table) ->
+    try mnesia:table_info(Table, attributes) of
+        Attrs -> {ok, Attrs}
+    catch
+        exit:{aborted, _} -> missing
+    end.
+
+create_datoms_table(ExpectedAttrs) ->
     case mnesia:create_table(datoms, [
         {record_name, datom},
         {attributes, ExpectedAttrs},
         {disc_copies, [node()]}
     ]) of
-        {atomic, ok} -> ok;
-        {aborted, {already_exists, datoms}} -> ok;
-        _ -> ok
-    end,
-    mnesia:wait_for_tables([datoms], 5000),
-    nil.
+        {atomic, ok} ->
+            wait_for_datoms();
+        {aborted, {already_exists, datoms}} ->
+            %% A concurrent initializer may have created it; inspect rather than
+            %% assuming its schema matches.
+            case table_attributes(datoms) of
+                {ok, ExpectedAttrs} -> wait_for_datoms();
+                {ok, ActualAttrs} -> {error, schema_mismatch_message(ExpectedAttrs, ActualAttrs)};
+                missing -> {error, <<"datoms table disappeared during initialization">>}
+            end;
+        {aborted, Reason} ->
+            {error, list_to_binary(io_lib:format("failed to create datoms table: ~p", [Reason]))}
+    end.
+
+wait_for_datoms() ->
+    case mnesia:wait_for_tables([datoms], 5000) of
+        ok -> {ok, nil};
+        {timeout, Tables} ->
+            {error, list_to_binary(io_lib:format("timed out waiting for Mnesia tables: ~p", [Tables]))};
+        {error, Reason} ->
+            {error, list_to_binary(io_lib:format("failed waiting for Mnesia tables: ~p", [Reason]))}
+    end.
+
+schema_mismatch_message(ExpectedAttrs, ActualAttrs) ->
+    list_to_binary(
+        io_lib:format(
+            "datoms schema mismatch; expected ~p, found ~p. No data was modified. Create a backup, migrate explicitly, or reset the table deliberately.",
+            [ExpectedAttrs, ActualAttrs]
+        )
+    ).
 
 persist(Datom) ->
     mnesia:dirty_write(datoms, Datom),

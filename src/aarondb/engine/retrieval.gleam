@@ -19,11 +19,16 @@ pub fn similarity(
 ) -> List(Dict(String, fact.Value)) {
   case dict.get(ctx, var) {
     Ok(fact.Vec(v)) -> {
-      let dist =
-        vector.cosine_similarity(vector.normalize(vec), vector.normalize(v))
-      case dist >=. threshold {
-        True -> [ctx]
+      case vector.dimensions(vec) == vector.dimensions(v) {
         False -> []
+        True -> {
+          let dist =
+            vector.cosine_similarity(vector.normalize(vec), vector.normalize(v))
+          case dist >=. threshold {
+            True -> [ctx]
+            False -> []
+          }
+        }
       }
     }
     Ok(_) -> []
@@ -128,10 +133,15 @@ fn unbound_similarity(
       |> list.filter_map(fn(d: fact.Datom) {
         case d.value {
           fact.Vec(v) -> {
-            let dist = vector.cosine_similarity(vec, v)
-            case dist >=. threshold {
-              True -> Ok(d)
+            case vector.dimensions(vec) == vector.dimensions(v) {
               False -> Error(Nil)
+              True -> {
+                let dist = vector.cosine_similarity(vec, v)
+                case dist >=. threshold {
+                  True -> Ok(d)
+                  False -> Error(Nil)
+                }
+              }
             }
           }
           _ -> Error(Nil)

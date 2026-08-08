@@ -4,6 +4,7 @@ import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 
 /// A single layer in the Hierarchical Navigable Small-World (HNSW) graph.
@@ -17,6 +18,7 @@ pub type VecIndex {
   VecIndex(
     nodes: Dict(fact.EntityId, List(Float)),
     layers: Dict(Int, Layer),
+    dimensions: Option(Int),
     max_neighbors: Int,
     entry_point: Result(fact.EntityId, Nil),
     max_level: Int,
@@ -35,6 +37,7 @@ pub fn new() -> VecIndex {
   VecIndex(
     nodes: dict.new(),
     layers: dict.from_list([#(0, Layer(edges: dict.new()))]),
+    dimensions: None,
     max_neighbors: 16,
     entry_point: Error(Nil),
     max_level: 0,
@@ -62,11 +65,41 @@ fn uniform_float() -> Float
 // --- Insert ---
 
 /// Insert a vector into the NSW graph.
-/// Greedy-links the new node to its nearest existing neighbors across multiple levels.
+///
+/// A vector index has one fixed dimensionality, established by its first vector.
+/// A mismatched vector is rejected without changing the index.
 pub fn insert(
   idx: VecIndex,
   entity: fact.EntityId,
   vec: List(Float),
+) -> VecIndex {
+  case try_insert(idx, entity, vec) {
+    Ok(index) -> index
+    Error(Nil) -> idx
+  }
+}
+
+/// Insert a vector, returning `Error` when its dimensionality differs from the
+/// index. Use this at validation boundaries when an invalid vector must be
+/// surfaced to the caller.
+pub fn try_insert(
+  idx: VecIndex,
+  entity: fact.EntityId,
+  vec: List(Float),
+) -> Result(VecIndex, Nil) {
+  let dimensions = vector.dimensions(vec)
+  case idx.dimensions {
+    Some(expected) if expected != dimensions -> Error(Nil)
+    _ -> Ok(do_insert(idx, entity, vec, dimensions))
+  }
+}
+
+/// Greedy-links the new node to its nearest existing neighbors across multiple levels.
+fn do_insert(
+  idx: VecIndex,
+  entity: fact.EntityId,
+  vec: List(Float),
+  dimensions: Int,
 ) -> VecIndex {
   // Store the normalized vector
   let vec = vector.normalize(vec)
@@ -88,6 +121,7 @@ pub fn insert(
         ..idx,
         nodes: nodes,
         layers: layers,
+        dimensions: Some(dimensions),
         entry_point: Ok(entity),
         max_level: level,
       )
@@ -218,9 +252,37 @@ fn descend_to_level(
 
 // --- Search ---
 
-/// Search for vectors similar to query within threshold, returning up to k results.
-/// Uses hierarchical greedy beam search.
 pub fn search(
+  idx: VecIndex,
+  query: List(Float),
+  threshold: Float,
+  k: Int,
+) -> List(SearchResult) {
+  case try_search(idx, query, threshold, k) {
+    Ok(results) -> results
+    Error(Nil) -> []
+  }
+}
+
+/// Search for vectors similar to `query`.
+///
+/// Returns `Error` when the query dimensions do not match the index. This
+/// prevents mismatched vectors from receiving a truncated similarity score.
+pub fn try_search(
+  idx: VecIndex,
+  query: List(Float),
+  threshold: Float,
+  k: Int,
+) -> Result(List(SearchResult), Nil) {
+  let dimensions = vector.dimensions(query)
+  case idx.dimensions {
+    Some(expected) if expected != dimensions -> Error(Nil)
+    _ -> Ok(do_search(idx, query, threshold, k))
+  }
+}
+
+/// Uses hierarchical greedy beam search.
+fn do_search(
   idx: VecIndex,
   query: List(Float),
   threshold: Float,
