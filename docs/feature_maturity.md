@@ -1,6 +1,6 @@
 # Feature Maturity
 
-This document separates implemented capability from vision. The goal is to keep adoption decisions tied to the strongest, most testable parts of the codebase.
+This document separates implemented capability from vision. The goal is to keep adoption decisions tied to the strongest, most testable parts of the codebase. The supported deployment boundary and explicit non-goals are defined in [ADR 0002](adr/0002-embedded-local-mcp-boundary.md).
 
 ## Levels
 
@@ -22,10 +22,12 @@ This document separates implemented capability from vision. The goal is to keep 
 | Vector and BM25 search | Beta | Separate modules and tests | Hybrid retrieval story is broader than current interfaces |
 | Federation and virtual predicates | Beta | AST and tests exist | Operational contracts are still thin |
 | Reactive subscriptions and WAL-style hooks | Beta | Reactive module and tests | Behavior depends on actor interactions and timing |
-| Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Distributed query path is still scatter/gather full scan; cross-shard average/median are approximate (avg-of-averages / median-of-medians); migration helper returns an explicit not-implemented error |
-| Raft / HA | Inactive stub | Pure election-only state machine in `src/aarondb/raft.gleam` | Deliberately dormant; no log replication, transport, or runtime integration |
-| MCP server | Beta | Three real tools (remember, recall, read) with JSON serialization and a typed actor entry point in `src/aarondb/mcp/server.gleam` | No production transport (stdio/network) yet; auth tokens are decoded but not signature-verified |
-| Cognitive memory layer | Experimental | Pure `erf`/`scoring` modules are unit-tested (`cognitive_test.gleam`); engine has its own working `Cognitive` clause solver | The pure modules are not yet integrated with the engine solver — decide integration vs removal |
+| Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Local scatter/gather only; cross-shard average/median are approximate and migration is explicitly unsupported |
+| Raft / HA | Inactive stub | Pure election-only state machine in `src/aarondb/raft.gleam` | No log replication, transport, or runtime integration; explicitly outside the supported boundary |
+| MCP server | Beta | Three tools (remember, recall, read), JSON serialization, typed actor | No stdio transport yet; local process integration only after ADR 0002 transport work lands |
+| Capability authorization | Local-only | `src/aarondb/auth.gleam`, gateway tests | JSON capabilities are not signed credentials; no network authentication claim |
+| Mnesia persistence | Recovery-oriented | Adapter plus recovery test coverage | No production multi-node/failure contract |
+| Cognitive memory layer | Experimental | Pure `erf`/`scoring` modules are unit-tested; engine has its own working `Cognitive` clause solver | The pure modules are not integrated with the engine solver — decide integration vs removal |
 
 ## Adoption Guidance
 
@@ -42,5 +44,6 @@ Treat these as opt-in extensions requiring deeper code review and operational te
 - sharding
 - MCP tooling
 - cognitive features
-- CMS modules
 - HA and distributed coordination claims
+
+For deployment, auth, persistence, and extension constraints, follow [ADR 0002](adr/0002-embedded-local-mcp-boundary.md).

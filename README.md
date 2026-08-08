@@ -2,6 +2,8 @@
 
 > "Simplicity is not about making things easy. It is about untangling complexity." - Rich Hickey
 
+> **Supported deployment boundary:** embedded library plus optional local stdio MCP adapter. See [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md) before adopting MCP, auth, persistence, or distributed extensions.
+
 AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest current shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
 
 This repository also contains experimental distributed, search, and cognitive layers, plus a Beta MCP server. Those subsystems are not all at the same maturity level. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
