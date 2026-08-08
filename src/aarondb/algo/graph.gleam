@@ -144,29 +144,23 @@ pub fn pagerank(
   damping: Float,
   iterations: Int,
 ) -> Dict(EntityId, Float) {
-  // 1. Build the graph adjacency list
-  // We scan the entire AEVT index for this attribute? 
-  // Optimization: Just scan EAVT would be slow if we need all edges.
-  // Actually, we can just iterate over all Datoms in EAVT that match the attribute?
-  // Index usually provides range scan.
-  // For now, let's assume we can get all edges efficiently. 
-  // Since we don't have a direct "get all for attr" API exposed from Index usually (it's internal),
-  // we might need to rely on the engine or specific index function.
-  // Let's assume we build it:
-
   let edges = build_graph(state, attr)
   let nodes = get_all_nodes(edges)
-  let n = int.to_float(set.size(nodes))
-  let initial_rank = 1.0 /. n
-
-  // Initialize ranks
-  let ranks =
-    list.fold(set.to_list(nodes), dict.new(), fn(acc, node) {
-      dict.insert(acc, node, initial_rank)
-    })
-
-  let #(incoming, out_degree) = preprocess_graph(edges, nodes)
-  pagerank_iter(nodes, incoming, out_degree, ranks, damping, iterations, n)
+  case
+    set.size(nodes) == 0 || damping <. 0.0 || damping >. 1.0 || iterations <= 0
+  {
+    True -> dict.new()
+    False -> {
+      let n = int.to_float(set.size(nodes))
+      let initial_rank = 1.0 /. n
+      let ranks =
+        list.fold(set.to_list(nodes), dict.new(), fn(acc, node) {
+          dict.insert(acc, node, initial_rank)
+        })
+      let #(incoming, out_degree) = preprocess_graph(edges, nodes)
+      pagerank_iter(nodes, incoming, out_degree, ranks, damping, iterations, n)
+    }
+  }
 }
 
 // Graph: Node -> List(Neighbor)
