@@ -1,6 +1,6 @@
 # Feature Maturity
 
-This document separates implemented capability from vision. The supported deployment boundary and explicit non-goals are defined in [ADR 0002](adr/0002-embedded-local-mcp-boundary.md). The concrete evidence gates for search, graph analytics, and federation are maintained in the [roadmap](roadmap_vnext.md).
+This document separates implemented capability from vision. The supported deployment boundary and explicit non-goals are defined in [ADR 0002](adr/0002-embedded-local-mcp-boundary.md). The concrete evidence gates for search, graph analytics, and federation are maintained in the [roadmap](roadmap_vnext.md), with a verifiable per-contract index in [Stable-local evidence](evidence.md).
 
 ## Levels
 
@@ -28,7 +28,7 @@ This document separates implemented capability from vision. The supported deploy
 | Raft / HA | Inactive stub | Pure election-only state machine in `src/aarondb/raft.gleam` | No log replication, transport, or runtime integration; explicitly outside the supported boundary |
 | MCP server | Beta | Local stdio JSON-RPC adapter, three tools, JSON serialization, typed actor | Local child-process transport only; no network listener |
 | Capability authorization | Local-only | `src/aarondb/auth.gleam`, gateway tests | JSON capabilities are not signed credentials; no network authentication claim |
-| Mnesia persistence | Recovery-oriented | Adapter plus recovery test coverage | No production multi-node/failure contract |
+| Mnesia persistence | Recovery-oriented (single-node) | Transaction-error propagation, non-destructive schema guard, and recovery coverage | No HA, multi-node, schema-migration, power-loss, or concurrent-writer performance contract |
 | Cognitive memory layer | Stable (local explicit-fact solver) | One active `Cognitive` solver, explicit relevance lifecycle contract, and regression tests | No ranking, embedding similarity, adaptive learning, decay, external retrieval, or cross-node consistency |
 
 ## Supported local contracts
@@ -44,6 +44,10 @@ This document separates implemented capability from vision. The supported deploy
 
 These Stable labels do **not** imply remote federation, HA, replication, migration, quorum, coordinated writes, global snapshots, or universal performance guarantees.
 
+## Legacy and inactive surfaces
+
+- **Raft** is an explicitly inactive, election-only state-machine stub. It has no runtime integration and must not be treated as a clustering, replication, or HA feature.
+- **RAG** is the supported local MCP semantic-intent macro layer. It compiles intents to the normal Cognitive and graph AST clauses; it is not a separate retrieval engine or service.
 ## Adoption Guidance
 
 Use the stable set when evaluating AaronDB as infrastructure:

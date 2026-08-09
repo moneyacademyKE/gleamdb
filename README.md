@@ -1,5 +1,9 @@
 # AaronDB
 
+[![Hex](https://img.shields.io/hexpm/v/aarondb.svg)](https://hex.pm/packages/aarondb)
+
+AaronDB is a local, embedded Datalog database for the BEAM. Its documented Stable labels are narrow local contracts backed by committed tests, bounded failure behavior where relevant, reproducible harnesses, and CI; see the [evidence index](docs/evidence.md).
+
 > "Simplicity is not about making things easy. It is about untangling complexity." — Rich Hickey
 
 > **Current release line:** v4.1.0 defines evidence-backed **local** Stable contracts for vector/HNSW, BM25, graph analytics, and federation. See [Feature Maturity](docs/feature_maturity.md) and [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md).

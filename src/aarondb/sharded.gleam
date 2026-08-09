@@ -466,41 +466,6 @@ fn aarondb_aggregate(vals, func) {
   aggregate.aggregate(vals, func)
 }
 
-/// Pull an entity in parallel across all shards.
-pub fn pull(
-  db: query_types.ShardedDb(transactor.Db),
-  eid: fact.Eid,
-  pattern: ast.PullPattern,
-) -> query_types.PullResult {
-  let shard_list = dict.to_list(db.shards)
-  let self = process.new_subject()
-
-  // Scatter
-  list.each(shard_list, fn(pair) {
-    let #(_, shard_db) = pair
-    process.spawn(fn() {
-      let res = aarondb.pull(shard_db, eid, pattern)
-      process.send(self, res)
-    })
-  })
-
-  // Gather
-  list.fold(
-    range(1, list.length(shard_list)),
-    query_types.PullMap(dict.new()),
-    fn(acc, _) {
-      let res = process.receive(self, 5000)
-      case res {
-        Ok(r) -> merge_pull_results(acc, unsafe_coerce(r))
-        Error(_) -> acc
-      }
-    },
-  )
-}
-
-@external(erlang, "aarondb_ffi", "dynamic_from")
-fn unsafe_coerce(a: a) -> b
-
 /// Perform a global vector similarity search across all shards.
 /// Phase 50: Distributed V-Link.
 pub fn global_vector_search(
@@ -581,47 +546,6 @@ pub fn calculate_migration_plan(
   MigrationPlan(moves)
 }
 
-/// Impure wrapper to execute a rebalance.
-pub fn rebalance(
-  db: query_types.ShardedDb(transactor.Db),
-) -> Result(query_types.ShardedDb(transactor.Db), String) {
-  // 1. Collect distribution data (Impure)
-  let shard_list = dict.to_list(db.shards)
-  let all_facts_query = [ast.Positive(#(ast.Var("e"), "a", ast.Var("v")))]
-
-  let current_distribution =
-    list.map(shard_list, fn(pair) {
-      let #(shard_id, shard_db) = pair
-      let shard_state = transactor.get_state(shard_db)
-      let q =
-        ast.Query(
-          find: [],
-          where: all_facts_query,
-          order_by: None,
-          limit: None,
-          offset: None,
-        )
-      let res = engine.run(shard_state, q, [], None, None)
-      #(shard_id, res.rows)
-    })
-
-  // 2. Calculate migration plan (Pure)
-  let plan = calculate_migration_plan(current_distribution, db.shard_map)
-
-  // 3. Execute plan (Impure)
-  let results =
-    list.map(plan.moves, fn(move) {
-      let #(_, facts) = move
-      case facts {
-        [] -> Ok(Nil)
-        _ -> transact(db, facts) |> result.map(fn(_) { Nil })
-      }
-    })
-
-  list.try_map(results, fn(x) { x })
-  |> result.map(fn(_) { db })
-}
-
 /// Manually migrate data from one shard to another.
 ///
 /// ⚠️ NOT YET IMPLEMENTED. A correct implementation must scan the source
@@ -638,8 +562,22 @@ pub fn migrate_shard_data(
   Error("migrate_shard_data is not implemented — see doc comment")
 }
 
-/// Dynamically add a new shard to the cluster.
-/// This will update the ShardMap and trigger a rebalance.
+/// Rebalance is deliberately unsupported.
+///
+/// A correct implementation needs an atomic or recoverable copy/verify/cut-over
+/// protocol. Returning an explicit error is safer than duplicating facts without
+/// retracting their source copies.
+pub fn rebalance(
+  _db: query_types.ShardedDb(transactor.Db),
+) -> Result(query_types.ShardedDb(transactor.Db), String) {
+  Error("shard rebalancing is not supported — no atomic migration protocol")
+}
+
+/// Add a shard without attempting migration.
+///
+/// Existing facts remain on their current shards. The returned cluster updates
+/// routing only for future writes. Rebalancing is deliberately unsupported
+/// until a copy/verify/cut-over/retract protocol can preserve data atomically.
 pub fn add_shard(
   db: query_types.ShardedDb(transactor.Db),
   adapter: Option(StorageAdapter),
@@ -652,31 +590,16 @@ pub fn add_shard(
       let new_shards = dict.insert(db.shards, new_shard_id, shard_db)
       let new_shard_count = db.shard_count + 1
       let new_shard_map = create_shard_map(new_shards)
-
-      let new_db =
+      Ok(
         query_types.ShardedDb(
           ..db,
           shards: new_shards,
           shard_count: new_shard_count,
           shard_map: new_shard_map,
-        )
-
-      rebalance(new_db)
+        ),
+      )
     }
     Error(e) -> Error("Failed to add shard: " <> string_inspect_actor_error(e))
-  }
-}
-
-fn merge_pull_results(
-  a: query_types.PullResult,
-  b: query_types.PullResult,
-) -> query_types.PullResult {
-  case a, b {
-    query_types.PullMap(d1), query_types.PullMap(d2) ->
-      query_types.PullMap(dict.merge(d1, d2))
-    _, query_types.PullMap(_) -> b
-    query_types.PullMap(_), _ -> a
-    _, _ -> a
   }
 }
 

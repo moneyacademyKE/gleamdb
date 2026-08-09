@@ -82,7 +82,7 @@ These exist in the repository, but should be treated as optional layers over the
 | Sharding | Local parallel routing and scatter/gather query execution; Beta |
 | Raft | Inactive election-only state-machine stub; no runtime integration |
 | Search | ART, approximate HNSW vector index, and standalone local BM25 primitive; no hybrid/query-engine BM25 integration |
-| Agent tooling | Local MCP actor, RAG, and capability checks; no transport or signed authentication claim |
+| Agent tooling | Local MCP actor, RAG query macros, and capability checks; RAG compiles to normal engine clauses, with no separate retrieval engine, network transport, or signed-authentication claim |
 | Persistence | In-memory state plus recovery-oriented Mnesia adapter |
 
 ## Current Architectural Reality

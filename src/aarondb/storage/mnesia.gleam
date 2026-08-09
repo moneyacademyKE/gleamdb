@@ -6,10 +6,12 @@
 //// descriptive `Error` and leaves persisted data untouched. Back up and
 //// migrate explicitly—or intentionally reset the table—before retrying.
 //// STATUS: Supported for one local BEAM node's recovery path only. `init_mnesia`
-//// and writes return explicit errors, including schema mismatches and aborted
-//// transactions; they never reset an incompatible table. It does not provide
-//// multi-node durability, HA, schema migration, or concurrent-failure guarantees.
-//// See ADR 0002.
+//// and reads/writes return explicit errors, including startup, schema-mismatch,
+//// and aborted-transaction failures; they never reset an incompatible table.
+//// Concurrent initialization is safe: the second initializer re-checks the
+//// existing table schema. This adapter does not provide multi-node durability,
+//// HA, schema migration, crash-consistency testing across power loss, or a
+//// concurrent-writer performance guarantee. See ADR 0002.
 
 import aarondb/fact.{type Datom}
 import aarondb/shared/ast.{type Clause}

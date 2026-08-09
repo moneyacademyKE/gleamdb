@@ -98,8 +98,26 @@ fn do_start_named(
   ets_name: Option(String),
   timeout_ms: Int,
 ) -> Result(process.Subject(Message), actor.StartError) {
-  let assert Ok(reactive_subject) = reactive.start_link()
+  case reactive.start_link() {
+    Error(error) -> Error(error)
+    Ok(reactive_subject) ->
+      do_start_after_reactive(
+        store,
+        is_distributed,
+        ets_name,
+        timeout_ms,
+        reactive_subject,
+      )
+  }
+}
 
+fn do_start_after_reactive(
+  store: storage.StorageAdapter,
+  is_distributed: Bool,
+  ets_name: Option(String),
+  timeout_ms: Int,
+  reactive_subject: process.Subject(state.ReactiveMessage),
+) -> Result(process.Subject(Message), actor.StartError) {
   let base_state =
     state.DbState(
       adapter: store,

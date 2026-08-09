@@ -31,8 +31,8 @@ pub type RaftRole {
   Leader
 }
 
-/// The pure state of the Raft election state machine.
-/// No side effects — the transactor interprets the effects.
+/// The pure state of the inactive Raft election machine.
+/// No runtime component interprets its effects.
 pub type RaftState {
   RaftState(
     role: RaftRole,

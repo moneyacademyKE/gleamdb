@@ -2,7 +2,7 @@
 
 ## 4.1.0 - 2026-08-08
 
-A **local retrieval and analytics maturity release**. Vector, BM25, graph analytics, and federation are promoted to Stable only within their explicitly documented local contracts.
+A **local embedded maturity release**. AaronDB promotes supported capabilities only within their explicitly documented local contracts, backed by committed correctness, lifecycle, failure, bounded-resource, benchmark, and CI evidence.
 
 ### Added
 
@@ -10,17 +10,25 @@ A **local retrieval and analytics maturity release**. Vector, BM25, graph analyt
 - BM25 Analyzer v1 documentation, golden ranking/lifecycle corpus, incremental-versus-rebuild equivalence tests, and a reproducible local operation benchmark.
 - Bounded graph traversal and global-analytics APIs with typed node, edge, result, visit, and iteration budget errors; graph fixtures for sparse, dense, cyclic, disconnected, chain, and hub shapes.
 - Local federation query execution over named actors with deterministic source order, per-row provenance, typed fail-fast unavailable/timeout errors, and a reproducible multi-source soak harness.
-- CI evidence job that runs the vector, BM25, graph, and federation benchmark/regression harnesses.
+- Bounded temporal snapshots and deterministic bounded diffs with typed scan/range errors, lifecycle/invariant tests, and a reproducible benchmark harness.
+- Local reactive-subscription lifecycle evidence: serialized initial/delta/unsubscribe delivery, explicit unsubscribe, and stopped-subscriber pruning.
+- Local virtual-predicate adapter contracts with typed failures, positive row limits, overflow handling, and integration coverage.
+- A [stable-local evidence index](docs/evidence.md) connecting each maturity claim to its tests, bounds, reports, and CI harness.
+- CI evidence coverage for vector, BM25, graph, federation, and temporal/diff harnesses.
 
 ### Changed
 
-- Feature maturity now labels vector, BM25, graph, and federation **Stable only for their documented local contracts**.
+- Feature maturity now labels vector, BM25, graph, local federation, temporal/diff, reactive subscriptions, cognitive explicit-fact queries, and virtual predicates **Stable only for their documented local contracts**.
+- Mnesia persistence now propagates startup/schema/persistence failures without destructive schema replacement; it remains a recovery-oriented single-node adapter.
+- Sharding is explicitly contained as Beta: new shards route future local writes only, while `rebalance` and migration return typed unsupported errors rather than pretending to move data safely.
+- Core actor startup and zero-copy pull paths now fail safely instead of asserting on ordinary unavailable-state paths.
+- RAG is documented as local MCP semantic-intent macros over ordinary engine clauses; Raft remains an inactive, election-only pure stub.
 - Graph callers are directed to bounded APIs for arbitrary data; legacy unbounded APIs remain compatibility paths.
 - Federation is explicitly local in-runtime read composition. A source failure returns no partial result.
 
 ### Explicit non-goals
 
-This release does **not** add remote federation, replication, high availability, failover, migration, quorum, coordinated writes, global snapshots, sharding promotion, Raft activation, or universal latency/memory/recall guarantees.
+This release does **not** add remote federation, replication, high availability, failover, migration, quorum, coordinated writes, global snapshots, sharding promotion, Raft activation, signed network authentication, or universal latency/memory/recall guarantees.
 
 ### Verification
 
@@ -29,11 +37,12 @@ This release does **not** add remote federation, replication, high availability,
 - `gleam docs build`
 - `actionlint`
 - `git diff --check`
-- `gleam test --target erlang`: 199 passed, no failures
+- `gleam test --target erlang`: 220 passed, no failures
 - `gleam run -m vector_hnsw_benchmark`
 - `gleam run -m bm25_benchmark`
 - `gleam run -m graph_benchmark`
 - `gleam run -m federation_benchmark`
+- `gleam run -m temporal_diff_benchmark`
 
 ## 4.0.0 - 2026-08-08
 

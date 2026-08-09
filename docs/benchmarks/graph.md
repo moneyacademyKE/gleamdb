@@ -40,5 +40,8 @@ command on the deployment environment before making capacity decisions.
 ## Boundaries
 
 - The harness only demonstrates local correctness and a small regression envelope.
-- `reachable_bounded` is the supported bounded traversal entry point.
-- Global algorithms still materialize the selected local graph. Their bounded variants are tracked as required work before a Stable graph label.
+- `reachable_bounded` and the bounded global graph APIs are the supported paths
+  for arbitrary local data; they return typed budget errors instead of partial
+  results.
+- Legacy unbounded APIs remain compatibility paths and are not the
+  resource-bounded Stable contract.

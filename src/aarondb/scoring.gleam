@@ -1,3 +1,14 @@
+//// # scoring — local result-combination compatibility helper
+////
+//// This module is the authoritative helper for combining caller-owned scored
+//// result lists. It is used by the standalone local BM25 test surface and is
+//// intentionally separate from `engine/cognitive`: it does not learn, persist
+//// relevance, execute retrieval, or define a cognitive-memory model.
+////
+//// `weighted_union` is deterministic only up to its documented score ordering;
+//// callers that need a semantic retrieval contract must use an engine-backed
+//// query or define one explicitly.
+
 import aarondb/fact
 import gleam/dict
 import gleam/float

@@ -49,6 +49,8 @@ The authoritative maturity labels are maintained in [Feature Maturity](feature_m
 
 - **Sharding:** local scatter/gather remains Beta until transactional migration and exact cross-shard aggregate semantics exist.
 - **Raft:** inactive election-only stub; it has no transport, replicated log, persistence, or runtime integration.
+- **RAG:** supported local MCP semantic-intent macros; it compiles to ordinary Cognitive and graph clauses, not a separate retrieval engine.
+- **Scoring:** caller-owned result-combination helper; it is not a cognitive-memory implementation.
 - **Mnesia:** recovery-oriented adapter; no production multi-node or fault-tolerance claim.
 - **Network MCP/auth:** local stdio is supported. Network exposure requires a separate signed-auth and service-operational design.
 

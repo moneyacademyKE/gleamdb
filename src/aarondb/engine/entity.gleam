@@ -83,8 +83,11 @@ pub fn pull(
     True -> {
       case db_state.ets_name {
         Some(name) -> {
-          let assert Ok(bin) = ets_index.get_raw_binary(name <> "_eavt", eid)
-          query_types.PullRawBinary(bin)
+          case ets_index.get_raw_binary(name <> "_eavt", eid) {
+            Ok(bin) -> query_types.PullRawBinary(bin)
+            Error(_) ->
+              query_types.PullRawBinary(ets_index.serialize_term(datoms))
+          }
         }
         None -> query_types.PullRawBinary(ets_index.serialize_term(datoms))
       }

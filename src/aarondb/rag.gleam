@@ -1,3 +1,15 @@
+//// # rag — supported semantic-intent query macros
+////
+//// This module is the authoritative semantic-intent convenience layer for the
+//// local MCP `recall` tool. It compiles a small closed set of `SemanticIntent`
+//// values into ordinary AaronDB query ASTs; it owns no storage, transport, or
+//// ranking engine. Execution remains in the normal Cognitive and graph clause
+//// solvers.
+////
+//// It is not a separate "Graph RAG engine", a remote retrieval service, or an
+//// adaptive-learning system. Add a new intent only with an engine-backed AST
+//// contract and direct regression coverage.
+
 import aarondb/fact
 import aarondb/q.{type QueryBuilder, QueryBuilder}
 import aarondb/shared/ast
@@ -6,7 +18,7 @@ import gleam/option.{None, Some}
 
 /// Rich Hickey 🧙🏾‍♂️:
 /// A macro expands high-level declarative intent into fundamental, composable data structures.
-/// This module avoids building a new "Graph RAG Engine", instead mapping Semantic Intents
+/// This module avoids a separate retrieval engine by mapping semantic intents
 /// purely into Datalog ASTs which AaronDB already computes efficiently.
 pub type SemanticIntent {
   /// Basic vector similarity recall
