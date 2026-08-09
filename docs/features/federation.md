@@ -1,48 +1,34 @@
-# Data Federation (Virtual Predicates)
+# Virtual predicates and local federation
 
-Data Federation allows GleamDB to query external data sources (CSV files, JSON APIs, or even other databases) as if they were native facts.
+AaronDB has two different extension surfaces. They are deliberately not the
+same thing.
 
-## Design: Virtual Predicates
-Virtual predicates are registered at runtime as adapters. When the query engine encounters a `Virtual` clause, it delegates row generation to the adapter.
+## Virtual predicates: bounded local adapters
 
-### The Adapter Interface
-An adapter is a function that takes a list of resolved values (arguments) and returns a list of result rows (each row is a list of values).
+A virtual predicate is a caller-registered, synchronous adapter invoked by the
+local query actor when it reaches a `Virtual` clause. The adapter returns a
+complete ordered row list or a typed local error and is bounded by a positive
+caller-chosen row limit. Its complete contract is in
+[Virtual predicates](../manual/virtual_predicates.md).
 
-```gleam
-pub type VirtualAdapter =
-  fn(List(fact.Value)) -> List(List(fact.Value))
-```
+AaronDB enforces the row limit and fails closed for missing adapters, unresolved
+arguments, adapter failures/timeouts, and invalid output shapes: the clause
+produces no partial rows. Adapters remain application-owned code; AaronDB cannot
+interrupt an adapter already executing synchronously.
 
-## Usage
+Virtual predicates are **Stable (bounded local adapters)**. They do not define
+external transport, authentication, retries, provenance, schema negotiation,
+remote timeout enforcement, global snapshots, coordinated writes, replication,
+or distributed consistency.
 
-### 1. Register an Adapter
-Register a function that "solves" the virtual predicate.
+## Local federation: stable local fail-fast composition
 
-```gleam
-import gleamdb
-import gleamdb/fact
+`aarondb/federation` composes named local AaronDB actors in one BEAM runtime.
+It has source admission checks, schema attribute-set compatibility, stable
+source ordering, and provenance per returned row. Its detailed contract is in
+[Local federation](../manual/local_federation.md).
 
-let csv_adapter = fn(args) {
-  // Logic to read CSV based on args
-  [[fact.Str("Alice"), fact.Int(30)], [fact.Str("Bob"), fact.Int(25)]]
-}
-
-gleamdb.register_virtual(db, "users_csv", csv_adapter)
-```
-
-### 2. Query the Virtual Predicate
-Join external data with internal database facts in a single Datalog query.
-
-```gleam
-import gleamdb/q
-
-let query = q.new()
-  |> q.virtual("users_csv", [], ["name", "age"]) // Fetch from external
-  |> q.where(q.v("e"), "user/name", q.v("name"))   // Join with internal
-  |> q.to_clauses()
-```
-
-## Benefits
-- **Zero ETL**: Access external data in real-time without complex ingestion pipelines.
-- **De-complected Storage**: The query engine doesn't care if the data is in an ETS table or a remote file.
-- **Declarative Power**: Use Datalog's filtering, joining, and aggregation capabilities on external data.
+It is not a virtual-predicate adapter layer, remote federation, sharding,
+replication, coordinated writes, quorum, or high availability. The local
+fail-fast execution contract, source lifecycle checks, and soak evidence are in
+[Local federation](../manual/local_federation.md).

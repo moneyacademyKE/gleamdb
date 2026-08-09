@@ -74,6 +74,37 @@ pub fn history_audit_test() {
   let assert [_d1, _d2, _d3, _, _] = ages
 }
 
+pub fn transaction_returns_storage_failure_without_mutating_state_test() {
+  let adapter = failing_adapter()
+  let db = aarondb.new_with_adapter(option.Some(adapter))
+
+  aarondb.transact(db, [
+    #(fact.Uid(fact.EntityId(999)), "storage/failure", fact.Str("blocked")),
+  ])
+  |> should.equal(Error("simulated persistence failure"))
+
+  let results =
+    aarondb.query(db, [
+      aarondb.p(#(types.Var("e"), "storage/failure", types.Var("value"))),
+    ])
+
+  should.equal(results.rows, [])
+}
+
+fn failing_adapter() -> storage.StorageAdapter {
+  storage.StorageAdapter(
+    insert: fn(_) {
+      Error(storage.TransactionError("simulated persistence failure"))
+    },
+    append: fn(_) {
+      Error(storage.TransactionError("simulated persistence failure"))
+    },
+    read: fn(_) { Ok([]) },
+    read_all: fn() { Ok([]) },
+    query_datoms: fn(_) { Ok([]) },
+  )
+}
+
 pub fn recovery_durability_test() {
   let adapter = mnesia.adapter()
   let _ = storage.insert(adapter, [])

@@ -22,16 +22,23 @@ pub fn do_handle_transact(
 ) -> actor.Next(state.DbState, msg) {
   case compute_next_state(state, facts, valid_time, op) {
     Ok(#(final_state, datoms)) -> {
-      let _ = storage.insert(final_state.adapter, datoms)
-      let changed_attrs =
-        list.map(datoms, fn(d) { d.attribute }) |> list.unique()
-      process.send(
-        state.reactive_actor,
-        state.Notify(changed_attrs, final_state),
-      )
-      list.each(state.subscribers, fn(sub) { process.send(sub, datoms) })
-      process.send(reply, Ok(final_state))
-      actor.continue(final_state)
+      case storage.insert(final_state.adapter, datoms) {
+        Ok(Nil) -> {
+          let changed_attrs =
+            list.map(datoms, fn(d) { d.attribute }) |> list.unique()
+          process.send(
+            state.reactive_actor,
+            state.Notify(changed_attrs, final_state),
+          )
+          list.each(state.subscribers, fn(sub) { process.send(sub, datoms) })
+          process.send(reply, Ok(final_state))
+          actor.continue(final_state)
+        }
+        Error(error) -> {
+          process.send(reply, Error(storage.error_message(error)))
+          actor.continue(state)
+        }
+      }
     }
     Error(e) -> {
       process.send(reply, Error(e))

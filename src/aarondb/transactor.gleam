@@ -98,8 +98,26 @@ fn do_start_named(
   ets_name: Option(String),
   timeout_ms: Int,
 ) -> Result(process.Subject(Message), actor.StartError) {
-  let assert Ok(reactive_subject) = reactive.start_link()
+  case reactive.start_link() {
+    Error(error) -> Error(error)
+    Ok(reactive_subject) ->
+      do_start_after_reactive(
+        store,
+        is_distributed,
+        ets_name,
+        timeout_ms,
+        reactive_subject,
+      )
+  }
+}
 
+fn do_start_after_reactive(
+  store: storage.StorageAdapter,
+  is_distributed: Bool,
+  ets_name: Option(String),
+  timeout_ms: Int,
+  reactive_subject: process.Subject(state.ReactiveMessage),
+) -> Result(process.Subject(Message), actor.StartError) {
   let base_state =
     state.DbState(
       adapter: store,
@@ -189,6 +207,18 @@ pub fn log_query(
   // Fire and forget is okay, but we'll await with a short timeout to prevent mailbox overflow
   let _ = process.receive(reply, 100)
   Nil
+}
+
+pub fn get_state_with_timeout(
+  subj: process.Subject(Message),
+  timeout_ms: Int,
+) -> Result(state.DbState, String) {
+  let reply = process.new_subject()
+  process.send(subj, GetState(reply))
+  case process.receive(reply, timeout_ms) {
+    Ok(state) -> Ok(state)
+    Error(_) -> Error("Timeout getting database state")
+  }
 }
 
 pub fn get_state(subj: process.Subject(Message)) -> state.DbState {

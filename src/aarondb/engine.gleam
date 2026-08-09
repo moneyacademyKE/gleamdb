@@ -18,9 +18,12 @@ import aarondb/shared/state
 import aarondb/storage/internal
 
 import gleam/dict.{type Dict}
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/order
 import gleam/set.{type Set}
+import gleam/string
 
 // Rule moved to types.gleam to avoid cycle
 
@@ -248,6 +251,35 @@ pub fn diff(
 ) -> List(fact.Datom) {
   index.get_all_datoms(db_state.eavt)
   |> list.filter(fn(d) { d.tx > from_tx && d.tx <= to_tx })
+}
+
+/// Returns `(from_tx, to_tx]` ordered by transaction, transaction-local index,
+/// then a stable datom tie-breaker. This is the ordering used by the bounded
+/// public diff contract.
+pub fn diff_ordered(
+  db_state: state.DbState,
+  from_tx: Int,
+  to_tx: Int,
+) -> List(fact.Datom) {
+  diff(db_state, from_tx, to_tx)
+  |> list.sort(compare_diff_datoms)
+}
+
+fn compare_diff_datoms(left: fact.Datom, right: fact.Datom) -> order.Order {
+  case int.compare(left.tx, right.tx) {
+    order.Eq -> {
+      case int.compare(left.tx_index, right.tx_index) {
+        order.Eq -> {
+          case fact.compare(left.value, right.value) {
+            order.Eq -> string.compare(left.attribute, right.attribute)
+            other -> other
+          }
+        }
+        other -> other
+      }
+    }
+    other -> other
+  }
 }
 
 pub fn explain(clauses: List(ast.BodyClause)) -> String {

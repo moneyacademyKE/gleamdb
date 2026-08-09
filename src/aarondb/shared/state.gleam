@@ -84,8 +84,38 @@ pub type ReactiveMessage {
     subscriber: Subject(query_types.ReactiveDelta),
     initial_state: query_types.QueryResult,
   )
+  Unsubscribe(subscriber: Subject(query_types.ReactiveDelta))
   Notify(changed_attributes: List(String), current_state: DbState)
 }
 
-pub type VirtualAdapter =
-  fn(List(fact.Value)) -> List(List(fact.Value))
+/// A local virtual predicate adapter.
+///
+/// The adapter runs synchronously inside the query actor. It must return either
+/// a complete ordered set of rows or a failure; it must not perform remote I/O
+/// or assume AaronDB can interrupt a blocked call.
+pub type VirtualAdapter {
+  VirtualAdapter(
+    execute: fn(List(fact.Value)) ->
+      Result(List(List(fact.Value)), VirtualAdapterError),
+    max_rows: Int,
+  )
+}
+
+/// Typed result of running a bounded local virtual predicate adapter.
+pub type VirtualAdapterError {
+  InvalidVirtualRowLimit
+  VirtualAdapterFailed(message: String)
+  VirtualAdapterTimedOut
+  VirtualRowLimitExceeded
+}
+
+pub fn virtual_adapter(
+  execute: fn(List(fact.Value)) ->
+    Result(List(List(fact.Value)), VirtualAdapterError),
+  max_rows: Int,
+) -> Result(VirtualAdapter, VirtualAdapterError) {
+  case max_rows > 0 {
+    True -> Ok(VirtualAdapter(execute: execute, max_rows: max_rows))
+    False -> Error(InvalidVirtualRowLimit)
+  }
+}

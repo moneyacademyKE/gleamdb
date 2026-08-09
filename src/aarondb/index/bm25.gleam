@@ -144,7 +144,13 @@ pub fn remove_entity(index: BM25Index, entity: fact.EntityId) -> BM25Index {
           fn(acc, term, entries) {
             let #(tf_acc, df_acc) = acc
             case dict.get(entries, entity) {
-              Error(_) -> #(dict.insert(tf_acc, term, entries), df_acc)
+              Error(_) -> {
+                let df = dict.get(index.doc_freq, term) |> result.unwrap(0)
+                #(
+                  dict.insert(tf_acc, term, entries),
+                  dict.insert(df_acc, term, df),
+                )
+              }
               Ok(_) -> {
                 let remaining = dict.delete(entries, entity)
                 let tf_next = case dict.size(remaining) {

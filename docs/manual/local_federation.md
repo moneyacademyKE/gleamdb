@@ -1,12 +1,12 @@
 # Local federation contract
 
-> **Status: Beta.** Local federation composes independently owned AaronDB
+> **Status: Stable (local fail-fast reads).** Local federation composes independently owned AaronDB
 > databases inside one BEAM runtime. It is not sharding, remote federation,
 > replication, or high availability.
 
 ## What it provides
 
-`aarondb/federation` evaluates one query against a named list of local database
+`aarondb/federation` evaluates one query against a named list of live local
 actors. Results retain their source so callers do not confuse equal entity IDs
 or values from different databases.
 
@@ -18,7 +18,7 @@ let assert Ok(federation) = federation.new([
   federation.Source("catalog", catalog_db),
 ])
 
-let results = federation.query(federation, query)
+let assert Ok(results) = federation.query(federation, query)
 ```
 
 A `FederatedResult` contains:
@@ -30,7 +30,8 @@ A `FederatedResult` contains:
 
 The stable order is by source name. Row order *inside* a source remains the
 order returned by that source's query engine. No global ranking, join, or
-collision merge is implied.
+collision merge is implied. Provenance namespaces otherwise colliding entity
+IDs: the raw ID alone is not a federation-wide identity.
 
 ## Admission rules
 
@@ -43,18 +44,22 @@ collision merge is implied.
 Schema compatibility is an admission guard, not negotiation or migration.
 Callers own schema deployment across the component databases.
 
-## Consistency and failures
+## Execution and failures
 
 Every source is queried independently and sequentially in stable name order.
-There is no cross-source transaction, snapshot, retry, timeout policy, or
-partial-result mode. A caller must treat a federation query as local composition
-of independent reads, not as an atomic distributed read.
+There is no cross-source transaction or snapshot guarantee.
 
-AaronDB currently exposes no recoverable source-failure result for federation.
-If a local source actor is unavailable, the underlying actor state read fails;
-the caller must manage source lifecycle before constructing or querying the
-federation. This is intentionally fail-fast rather than silently returning a
-partial result.
+`query` is fail-fast and uses a five-second deadline per source.
+`query_with_timeout` lets callers select another positive deadline. Both return
+`Result(FederatedResult, FederationError)`:
+
+- `SourceUnavailable(name)` means the actor was already dead before execution;
+- `SourceTimeout(name)` means a live source did not provide state by its
+  deadline.
+
+On either error the API returns **no `FederatedResult`**. It never leaks the
+rows gathered from earlier sources as a partial success. There is deliberately
+no partial-results mode, retry policy, or silent source omission.
 
 ## Explicit non-goals
 
@@ -63,7 +68,7 @@ This module does **not** provide:
 - remote peers or network transport;
 - source discovery, health checks, failover, quorum, or HA;
 - coordinated writes, two-phase commit, or replication;
-- entity-ID namespacing or automatic collision resolution;
+- entity-ID rewriting or automatic collision resolution;
 - cross-source joins, globally exact aggregates, or global query optimization;
 - membership change or data migration.
 

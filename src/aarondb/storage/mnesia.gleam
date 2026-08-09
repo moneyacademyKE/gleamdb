@@ -5,13 +5,13 @@
 //// Initialization never rewrites an existing incompatible schema: it reports a
 //// descriptive `Error` and leaves persisted data untouched. Back up and
 //// migrate explicitly—or intentionally reset the table—before retrying.
-//// Coverage: the round-trip (persist → restart → recover) is exercised by
-//// `recovery_durability_test` in `test/aarondb/history_test.gleam`.
-////
-//// STATUS: This adapter is supported for the existing local recovery path. It
-//// is not a production multi-node persistence/HA contract: schema lifecycle,
-//// concurrent failure behavior, node failure recovery, and multi-node
-//// validation remain deliberately unproven. See ADR 0002.
+//// STATUS: Supported for one local BEAM node's recovery path only. `init_mnesia`
+//// and reads/writes return explicit errors, including startup, schema-mismatch,
+//// and aborted-transaction failures; they never reset an incompatible table.
+//// Concurrent initialization is safe: the second initializer re-checks the
+//// existing table schema. This adapter does not provide multi-node durability,
+//// HA, schema migration, crash-consistency testing across power loss, or a
+//// concurrent-writer performance guarantee. See ADR 0002.
 
 import aarondb/fact.{type Datom}
 import aarondb/shared/ast.{type Clause}
@@ -21,21 +21,15 @@ import aarondb/storage.{type StorageAdapter, type StorageError, TransactionError
 pub fn init_mnesia() -> Result(Nil, String)
 
 @external(erlang, "aarondb_mnesia_ffi", "persist")
-pub fn persist_datom(datom: Datom) -> Nil
+pub fn persist_datom(datom: Datom) -> Result(Nil, String)
 
 @external(erlang, "aarondb_mnesia_ffi", "persist_batch")
-pub fn persist_batch(datoms: List(Datom)) -> Nil
+pub fn persist_batch(datoms: List(Datom)) -> Result(Nil, String)
 
 pub fn adapter() -> StorageAdapter {
   storage.StorageAdapter(
-    insert: fn(datoms) {
-      persist_batch(datoms)
-      Ok(Nil)
-    },
-    append: fn(datoms) {
-      persist_batch(datoms)
-      Ok(Nil)
-    },
+    insert: fn(datoms) { persist_batch(datoms) |> map_write_err },
+    append: fn(datoms) { persist_batch(datoms) |> map_write_err },
     read: fn(_attr) {
       // Simplified for read(attr) - ideally this uses a targeted select
       recover_datoms() |> map_err
@@ -45,12 +39,19 @@ pub fn adapter() -> StorageAdapter {
   )
 }
 
+fn map_write_err(res: Result(Nil, String)) -> Result(Nil, StorageError) {
+  case res {
+    Ok(Nil) -> Ok(Nil)
+    Error(error) -> Error(TransactionError(error))
+  }
+}
+
 fn map_err(
   res: Result(List(Datom), String),
 ) -> Result(List(Datom), StorageError) {
   case res {
-    Ok(d) -> Ok(d)
-    Error(e) -> Error(TransactionError(e))
+    Ok(datoms) -> Ok(datoms)
+    Error(error) -> Error(TransactionError(error))
   }
 }
 

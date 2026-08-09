@@ -19,7 +19,8 @@ This is useful for local parallelism, not remote clustering.
 - Queries currently fan out across all local shards; there is no bounded distributed planner or remote shard routing.
 - `Sum`, `Count`, `Min`, and `Max` use exact secondary reduction over shard results.
 - `Avg` is an **average of per-shard averages**, and `Median` is a **median of per-shard medians**. Neither is an exact global aggregate when shard cardinalities or distributions differ.
-- `migrate_shard_data` deliberately returns an explicit not-implemented error. There is no copy/verify/cut-over/retract protocol, retry idempotency, interruption recovery, automatic rebalancing, or failover.
+- `add_shard` adds a local actor and routes only future writes through the new map. It does **not** rebalance existing data.
+- `rebalance` and `migrate_shard_data` deliberately return explicit unsupported errors. There is no copy/verify/cut-over/retract protocol, retry idempotency, interruption recovery, automatic rebalancing, or failover.
 - Raft is not involved: its election-only state machine is an inactive stub with no runtime integration or replicated log.
 
 ## Choosing sharding

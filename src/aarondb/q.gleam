@@ -161,29 +161,33 @@ pub fn similar(
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }
 
-/// Temporal range query (on Transaction Time)
-pub fn temporal(
+/// Bind `variable` to the transaction-time basis used by nested clauses.
+///
+/// This is an exact `At` query: nested clauses observe only datoms whose
+/// transaction id is at most `tx`. For a complete query-level snapshot API,
+/// prefer `aarondb.as_of_tx`.
+pub fn temporal_at(
   builder: QueryBuilder,
   variable: String,
   entity: Part,
-  _attr: String,
-  start: Int,
-  _end: Int,
+  tx: Int,
 ) -> QueryBuilder {
-  let clause = ast.Temporal(ast.Tx, start, ast.At, variable, entity, [])
+  let clause = ast.Temporal(ast.Tx, tx, ast.At, variable, entity, [])
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }
 
-/// Temporal range query (on Valid Time)
-pub fn valid_temporal(
+/// Bind `variable` to the valid-time basis used by nested clauses.
+///
+/// This is an exact `At` query: nested clauses observe only datoms whose
+/// valid time is at most `valid_time`. For a complete query-level snapshot API,
+/// prefer `aarondb.as_of_valid`.
+pub fn valid_temporal_at(
   builder: QueryBuilder,
   variable: String,
   entity: Part,
-  _attr: String,
-  start: Int,
-  _end: Int,
+  valid_time: Int,
 ) -> QueryBuilder {
-  let clause = ast.Temporal(ast.Valid, start, ast.At, variable, entity, [])
+  let clause = ast.Temporal(ast.Valid, valid_time, ast.At, variable, entity, [])
   QueryBuilder(..builder, clauses: list.append(builder.clauses, [clause]))
 }
 

@@ -5,6 +5,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/order.{Eq}
 import gleam/result
 
 /// A single layer in the Hierarchical Navigable Small-World (HNSW) graph.
@@ -12,41 +13,91 @@ pub type Layer {
   Layer(edges: Dict(fact.EntityId, List(fact.EntityId)))
 }
 
-/// A Hierarchical Navigable Small-World (HNSW) graph for approximate nearest neighbor search.
-/// Scales logarithmically even for million-scale datasets by using hierarchical layers.
+/// The source used to choose HNSW insertion levels.
+///
+/// `RandomLevels` is the production default. `DeterministicLevels` is intended
+/// for repeatable tests and benchmarks; each accepted insert consumes one level,
+/// and an exhausted list uses level zero.
+pub type LevelSource {
+  RandomLevels
+  DeterministicLevels(List(Int))
+}
+
+/// Construction and search limits for an HNSW index.
+pub type HnswConfig {
+  HnswConfig(max_neighbors: Int, search_budget: Int, level_source: LevelSource)
+}
+
+/// A Hierarchical Navigable Small-World (HNSW) graph for approximate nearest-neighbor search.
+///
+/// The index is approximate. Use `exact_search` as a deterministic finite-corpus
+/// oracle for tests, benchmarks, and applications that require exhaustive results.
 pub type VecIndex {
   VecIndex(
     nodes: Dict(fact.EntityId, List(Float)),
     layers: Dict(Int, Layer),
     dimensions: Option(Int),
-    max_neighbors: Int,
+    config: HnswConfig,
     entry_point: Result(fact.EntityId, Nil),
     max_level: Int,
   )
 }
 
-/// A search result: entity ID + similarity score.
+/// A search result: entity ID plus cosine-similarity score.
 pub type SearchResult {
   SearchResult(entity: fact.EntityId, score: Float)
 }
 
 // --- Constructor ---
 
-/// Create an empty vector index with default max_neighbors of 16.
+/// Production HNSW configuration. Its level source is intentionally random.
+pub fn default_config() -> HnswConfig {
+  HnswConfig(max_neighbors: 16, search_budget: 100, level_source: RandomLevels)
+}
+
+/// Create an empty vector index with production defaults.
 pub fn new() -> VecIndex {
+  new_with_config(default_config())
+}
+
+/// A repeatable test/benchmark configuration. Each insert consumes one supplied
+/// non-negative level; after exhaustion, new nodes are placed on level zero.
+pub fn deterministic_config(levels: List(Int)) -> HnswConfig {
+  HnswConfig(
+    max_neighbors: 16,
+    search_budget: 100,
+    level_source: DeterministicLevels(levels),
+  )
+}
+
+/// Create an empty vector index with custom max-neighbor degree.
+pub fn new_with_m(m: Int) -> VecIndex {
+  new_with_config(HnswConfig(..default_config(), max_neighbors: m))
+}
+
+/// Create an empty index with an explicit configuration.
+///
+/// `DeterministicLevels` provides reproducible topology for tests and benchmarks.
+pub fn new_with_config(config: HnswConfig) -> VecIndex {
   VecIndex(
     nodes: dict.new(),
     layers: dict.from_list([#(0, Layer(edges: dict.new()))]),
     dimensions: None,
-    max_neighbors: 16,
+    config: config,
     entry_point: Error(Nil),
     max_level: 0,
   )
 }
 
-/// Create an empty vector index with custom max_neighbors.
-pub fn new_with_m(m: Int) -> VecIndex {
-  VecIndex(..new(), max_neighbors: m)
+fn next_level(source: LevelSource, multiplier: Float) -> #(Int, LevelSource) {
+  case source {
+    RandomLevels -> #(random_level(multiplier), RandomLevels)
+    DeterministicLevels([level, ..rest]) -> #(
+      int.max(0, level),
+      DeterministicLevels(rest),
+    )
+    DeterministicLevels([]) -> #(0, DeterministicLevels([]))
+  }
 }
 
 fn random_level(multiplier: Float) -> Int {
@@ -87,6 +138,10 @@ pub fn try_insert(
   entity: fact.EntityId,
   vec: List(Float),
 ) -> Result(VecIndex, Nil) {
+  let idx = case contains(idx, entity) {
+    True -> delete(idx, entity)
+    False -> idx
+  }
   let dimensions = vector.dimensions(vec)
   case valid_vector(vec) {
     False -> Error(Nil)
@@ -115,7 +170,13 @@ fn do_insert(
 
   // Determine insertion level (Phase 44: HNSW scaling)
   let assert Ok(log_16) = float.logarithm(16.0)
-  let level = random_level(1.0 /. log_16)
+  let #(level, level_source) =
+    next_level(idx.config.level_source, 1.0 /. log_16)
+  let idx =
+    VecIndex(
+      ..idx,
+      config: HnswConfig(..idx.config, level_source: level_source),
+    )
   let new_max_level = int.max(idx.max_level, level)
 
   case idx.entry_point {
@@ -172,7 +233,7 @@ fn do_insert(
               |> list.filter(fn(r) { r.entity != entity })
               // Don't connect to self
               |> list.sort(fn(a, b) { float.compare(b.score, a.score) })
-              |> list.take(idx.max_neighbors)
+              |> list.take(idx.config.max_neighbors)
 
             let neighbor_ids = list.map(neighbors, fn(r) { r.entity })
 
@@ -183,7 +244,7 @@ fn do_insert(
                 let existing = dict.get(e_acc, n_id) |> unwrap_list()
                 let updated =
                   prune_neighbors(
-                    idx.max_neighbors,
+                    idx.config.max_neighbors,
                     n_id,
                     [entity, ..existing],
                     nodes,
@@ -260,6 +321,51 @@ fn descend_to_level(
 
 // --- Search ---
 
+/// Exhaustively score every indexed vector with the same cosine, threshold, and
+/// validation rules as `try_search`.
+///
+/// This is the deterministic finite-corpus oracle for tests and benchmarks.
+/// Unlike HNSW, it is not approximate. Equal scores are ordered by ascending
+/// entity ID so callers can compare results mechanically.
+pub fn exact_search(
+  idx: VecIndex,
+  query: List(Float),
+  threshold: Float,
+  k: Int,
+) -> Result(List(SearchResult), Nil) {
+  let dimensions = vector.dimensions(query)
+  case valid_query(query, threshold, k) {
+    False -> Error(Nil)
+    True ->
+      case idx.dimensions {
+        Some(expected) if expected != dimensions -> Error(Nil)
+        _ -> {
+          let query = vector.normalize(query)
+          idx.nodes
+          |> dict.to_list()
+          |> list.map(fn(entry) {
+            SearchResult(
+              entity: entry.0,
+              score: vector.dot_product(query, entry.1),
+            )
+          })
+          |> list.filter(fn(result) { result.score >=. threshold })
+          |> list.sort(compare_search_results)
+          |> list.take(k)
+          |> Ok
+        }
+      }
+  }
+}
+
+fn compare_search_results(a: SearchResult, b: SearchResult) -> order.Order {
+  case float.compare(b.score, a.score) {
+    Eq ->
+      int.compare(fact.eid_to_integer(a.entity), fact.eid_to_integer(b.entity))
+    other -> other
+  }
+}
+
 pub fn search(
   idx: VecIndex,
   query: List(Float),
@@ -327,13 +433,13 @@ fn do_search(
           [ep_0],
           dict.new(),
           [ep_res],
-          k * 10,
+          idx.config.search_budget,
         )
 
       // Filter by threshold and take top-k
       results
       |> list.filter(fn(r) { r.score >=. threshold })
-      |> list.sort(fn(a, b) { float.compare(b.score, a.score) })
+      |> list.sort(compare_search_results)
       |> list.take(k)
     }
   }
@@ -411,7 +517,7 @@ fn greedy_search(
                   let new_results =
                     list.append(results, scored_neighbors)
                     |> list.unique()
-                    |> list.sort(fn(a, b) { float.compare(b.score, a.score) })
+                    |> list.sort(compare_search_results)
                     |> list.take(100)
 
                   greedy_search(
@@ -457,7 +563,7 @@ fn greedy_search(
               let new_results =
                 list.append(results, scored_neighbors)
                 |> list.unique()
-                |> list.sort(fn(a, b) { float.compare(b.score, a.score) })
+                |> list.sort(compare_search_results)
                 |> list.take(100)
 
               greedy_search(
@@ -482,6 +588,7 @@ fn greedy_search(
 /// Remove a node from the index across all layers and repair edges.
 pub fn delete(idx: VecIndex, entity: fact.EntityId) -> VecIndex {
   let nodes = dict.delete(idx.nodes, entity)
+  let is_empty = dict.is_empty(nodes)
 
   // Repair each layer
   let layers =
@@ -514,7 +621,20 @@ pub fn delete(idx: VecIndex, entity: fact.EntityId) -> VecIndex {
     other -> other
   }
 
-  VecIndex(..idx, nodes: nodes, layers: layers, entry_point: new_entry)
+  VecIndex(
+    ..idx,
+    nodes: nodes,
+    layers: layers,
+    dimensions: case is_empty {
+      True -> None
+      False -> idx.dimensions
+    },
+    entry_point: new_entry,
+    max_level: case is_empty {
+      True -> 0
+      False -> idx.max_level
+    },
+  )
 }
 
 // --- Helpers ---

@@ -5,6 +5,9 @@ import gleam/dict.{type Dict}
 import gleam/list
 import gleam/option.{Some}
 
+/// Run a bounded local adapter. Rows retain the adapter's order; an adapter
+/// failure, invalid row limit, or row-limit overflow makes this clause produce
+/// no rows. Query execution is intentionally fail-closed at this boundary.
 pub fn solve(
   db_state: state.DbState,
   predicate: String,
@@ -18,17 +21,19 @@ pub fn solve(
       |> option.to_result(Nil)
     })
 
-  case resolved_args {
-    Ok(vals) -> {
-      case dict.get(db_state.virtual_predicates, predicate) {
-        Ok(adapter) -> {
-          adapter(vals)
-          |> list.filter_map(fn(row) { bind_outputs(ctx, outputs, row) })
-        }
+  case resolved_args, dict.get(db_state.virtual_predicates, predicate) {
+    Ok(vals), Ok(state.VirtualAdapter(execute: execute, max_rows: max_rows)) ->
+      case execute(vals) {
+        Ok(rows) ->
+          case list.length(rows) <= max_rows {
+            True ->
+              rows
+              |> list.filter_map(fn(row) { bind_outputs(ctx, outputs, row) })
+            False -> []
+          }
         Error(_) -> []
       }
-    }
-    Error(_) -> []
+    _, _ -> []
   }
 }
 

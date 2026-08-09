@@ -2,7 +2,10 @@ import aarondb
 import aarondb/fact
 import aarondb/shared/ast
 import gleam/dict
+import gleam/int
 import gleam/list
+import gleam/option
+import gleam/string
 import gleeunit
 import gleeunit/should
 
@@ -10,84 +13,167 @@ pub fn main() {
   gleeunit.main()
 }
 
-pub fn bitemporal_query_test() {
+pub fn transaction_time_at_is_inclusive_and_update_aware_test() {
   let db = aarondb.new()
-
-  // 1. Initial State (T1)
+  let entity = fact.Uid(fact.EntityId(501))
   let assert Ok(_) =
-    aarondb.transact(db, [
-      #(fact.Uid(fact.EntityId(1)), "user/location", fact.Str("London")),
-    ])
+    aarondb.set_schema(db, "account/status", cardinality_one_config())
 
-  // 2. Query at T1
-  let res1 =
-    aarondb.query(db, [
-      aarondb.p(#(ast.Var("e"), "user/location", ast.Var("loc"))),
-    ])
-  should.equal(list.length(res1.rows), 1)
-  let assert Ok(row1) = list.first(res1.rows)
-  should.equal(dict.get(row1, "loc"), Ok(fact.Str("London")))
+  let assert Ok(state_one) =
+    aarondb.transact(db, [#(entity, "account/status", fact.Str("draft"))])
+  let assert Ok(state_two) =
+    aarondb.transact(db, [#(entity, "account/status", fact.Str("active"))])
 
-  // 3. Update at T2
-  let assert Ok(_) =
-    aarondb.transact(db, [
-      #(fact.Uid(fact.EntityId(1)), "user/location", fact.Str("Paris")),
-    ])
-
-  // 4. Query current (T2)
-  let res2 =
-    aarondb.query(db, [
-      aarondb.p(#(ast.Var("e"), "user/location", ast.Var("loc"))),
-    ])
-  let assert Ok(row2) = list.first(res2.rows)
-  should.equal(dict.get(row2, "loc"), Ok(fact.Str("Paris")))
-
-  // 5. Query as-of T1 (Temporal operator)
-  // Assuming the first transaction was at TX 1
-  let res3 =
-    aarondb.query(db, [
-      ast.Temporal(ast.Tx, 1, ast.At, "t", ast.Var("e"), [
-        aarondb.p(#(ast.Var("e"), "user/location", ast.Var("loc"))),
-      ]),
-    ])
-
-  // London should be visible at TX 1
-  let assert Ok(row3) = list.first(res3.rows)
-  should.equal(dict.get(row3, "loc"), Ok(fact.Str("London")))
+  let clause = aarondb.p(#(ast.Var("e"), "account/status", ast.Var("status")))
+  should.equal(statuses(aarondb.as_of(db, state_one.latest_tx, [clause])), [
+    "draft",
+  ])
+  should.equal(statuses(aarondb.as_of(db, state_two.latest_tx, [clause])), [
+    "active",
+  ])
+  should.equal(statuses(aarondb.as_of(db, 0, [clause])), [])
 }
 
-pub fn bitemporal_valid_time_test() {
-  // Testing valid-time (business time) independently of transaction time
+pub fn valid_time_at_diverges_from_transaction_time_test() {
   let db = aarondb.new()
-
-  // Role: Admin starting from 2020 (VT: 2020)
+  let entity = fact.Uid(fact.EntityId(502))
   let assert Ok(_) =
+    aarondb.set_schema(db, "contract/state", cardinality_one_config())
+
+  let assert Ok(state_one) =
     aarondb.transact_at(
       db,
-      [
-        #(fact.Uid(fact.EntityId(10)), "user/role", fact.Str("Admin")),
-      ],
-      2020,
+      [#(entity, "contract/state", fact.Str("draft"))],
+      300,
+    )
+  let assert Ok(state_two) =
+    aarondb.transact_at(
+      db,
+      [#(entity, "contract/state", fact.Str("active"))],
+      100,
     )
 
-  // Query as if it's 2021
-  let res_future =
-    aarondb.query(db, [
-      ast.Temporal(ast.Valid, 2021, ast.At, "vt", ast.Var("e"), [
-        aarondb.p(#(ast.Var("e"), "user/role", ast.Var("r"))),
-      ]),
-    ])
-  should.equal(list.length(res_future.rows), 1)
+  let clause = aarondb.p(#(ast.Var("e"), "contract/state", ast.Var("state")))
+  should.equal(statuses(aarondb.as_of(db, state_one.latest_tx, [clause])), [
+    "draft",
+  ])
+  should.equal(statuses(aarondb.as_of(db, state_two.latest_tx, [clause])), [
+    "active",
+  ])
+  should.equal(statuses(aarondb.as_of_valid(db, 99, [clause])), [])
+  should.equal(statuses(aarondb.as_of_valid(db, 100, [clause])), ["active"])
+  should.equal(statuses(aarondb.as_of_valid(db, 299, [clause])), ["active"])
+}
 
-  // Query as if it's 2019
-  let res_past =
+pub fn temporal_clause_at_matches_complete_query_snapshot_test() {
+  let db = aarondb.new()
+  let entity = fact.Uid(fact.EntityId(503))
+  let assert Ok(_) =
+    aarondb.set_schema(db, "profile/city", cardinality_one_config())
+  let assert Ok(state_one) =
+    aarondb.transact(db, [#(entity, "profile/city", fact.Str("London"))])
+  let assert Ok(_) =
+    aarondb.transact(db, [#(entity, "profile/city", fact.Str("Paris"))])
+
+  let snapshot =
+    aarondb.as_of(db, state_one.latest_tx, [
+      aarondb.p(#(ast.Var("e"), "profile/city", ast.Var("city"))),
+    ])
+  let nested =
     aarondb.query(db, [
-      ast.Temporal(ast.Valid, 2019, ast.At, "vt", ast.Var("e"), [
-        aarondb.p(#(ast.Var("e"), "user/role", ast.Var("r"))),
+      ast.Temporal(ast.Tx, state_one.latest_tx, ast.At, "basis", ast.Var("e"), [
+        aarondb.p(#(ast.Var("e"), "profile/city", ast.Var("city"))),
       ]),
     ])
-  // Should ideally be empty if we implemented full valid-time support.
-  // For now, these are stubs/placeholders in Phase 0 structure,
-  // but we verify the AST structure works.
-  should.equal(list.length(res_past.rows), 0)
+
+  should.equal(statuses(snapshot), ["London"])
+  should.equal(statuses(nested), ["London"])
+}
+
+pub fn retraction_is_visible_in_history_and_hidden_at_latest_basis_test() {
+  let db = aarondb.new()
+  let entity = fact.Uid(fact.EntityId(504))
+  let assert Ok(state_one) =
+    aarondb.transact(db, [#(entity, "note/text", fact.Str("keep me"))])
+  let assert Ok(state_two) =
+    aarondb.retract(db, [#(entity, "note/text", fact.Str("keep me"))])
+
+  let clause = aarondb.p(#(ast.Var("e"), "note/text", ast.Var("text")))
+  should.equal(statuses(aarondb.as_of(db, state_one.latest_tx, [clause])), [
+    "keep me",
+  ])
+  should.equal(statuses(aarondb.as_of(db, state_two.latest_tx, [clause])), [])
+
+  // `history` is index ordered, not chronological. Sort by transaction before
+  // asserting the temporal lifecycle.
+  let history =
+    aarondb.history(db, entity)
+    |> list.sort(fn(left, right) { int.compare(left.tx, right.tx) })
+  should.equal(list.length(history), 2)
+  let assert [assertion, retraction] = history
+  should.equal(assertion.operation, fact.Assert)
+  should.equal(retraction.operation, fact.Retract)
+  should.be_true(assertion.tx < retraction.tx)
+}
+
+pub fn bounded_temporal_queries_return_typed_budget_errors_test() {
+  let db = aarondb.new()
+  let entity = fact.Uid(fact.EntityId(505))
+  let assert Ok(_) =
+    aarondb.transact(db, [#(entity, "event/name", fact.Str("launch"))])
+  let second = fact.Uid(fact.EntityId(507))
+  let assert Ok(_) =
+    aarondb.transact(db, [#(second, "event/name", fact.Str("second"))])
+  let clause = aarondb.p(#(ast.Var("e"), "event/name", ast.Var("name")))
+
+  should.equal(
+    aarondb.temporal_scan_limits(0),
+    Error(aarondb.InvalidTemporalScanLimit),
+  )
+  let assert Ok(limits) = aarondb.temporal_scan_limits(1)
+  should.equal(
+    aarondb.as_of_bounded(db, 1, [clause], limits),
+    Error(aarondb.TemporalScanBudgetExceeded),
+  )
+}
+
+pub fn bounded_temporal_queries_match_legacy_snapshots_within_budget_test() {
+  let db = aarondb.new()
+  let entity = fact.Uid(fact.EntityId(506))
+  let assert Ok(state) =
+    aarondb.transact_at(db, [#(entity, "event/name", fact.Str("launch"))], 42)
+  let clause = aarondb.p(#(ast.Var("e"), "event/name", ast.Var("name")))
+  let assert Ok(limits) = aarondb.temporal_scan_limits(10)
+  let assert Ok(result) =
+    aarondb.as_of_bitemporal_bounded(db, state.latest_tx, 42, [clause], limits)
+
+  should.equal(statuses(result), ["launch"])
+}
+
+fn statuses(result: aarondb.QueryResult) -> List(String) {
+  result.rows
+  |> list.filter_map(fn(row) {
+    ["status", "state", "city", "text", "name"]
+    |> list.find_map(fn(key) {
+      case dict.get(row, key) {
+        Ok(fact.Str(value)) -> Ok(value)
+        _ -> Error(Nil)
+      }
+    })
+  })
+  |> list.sort(string.compare)
+}
+
+fn cardinality_one_config() -> fact.AttributeConfig {
+  fact.AttributeConfig(
+    unique: False,
+    component: False,
+    retention: fact.All,
+    cardinality: fact.One,
+    check: option.None,
+    composite_group: option.None,
+    layout: fact.Row,
+    tier: fact.Memory,
+    eviction: fact.AlwaysInMemory,
+  )
 }

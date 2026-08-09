@@ -44,6 +44,14 @@ pub fn query_datoms(
   adapter.query_datoms(pattern)
 }
 
+pub fn error_message(error: StorageError) -> String {
+  case error {
+    StorageError(message) -> message
+    TransactionError(reason) -> reason
+    NotFoundError -> "storage record not found"
+  }
+}
+
 pub fn ephemeral() -> StorageAdapter {
   StorageAdapter(
     insert: fn(_) { Ok(Nil) },

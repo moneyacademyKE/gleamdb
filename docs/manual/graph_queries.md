@@ -1,13 +1,13 @@
 # Graph Query Contract
 
-AaronDB graph clauses operate over **directed** reference-valued facts in the local in-memory database. This document defines the behavior callers can rely on today, and the limits that keep the feature Beta rather than pretending it is a distributed graph engine.
+AaronDB graph clauses operate over **directed** reference-valued facts in one local `DbState`. This is a bounded local analytics contract, not a distributed graph service.
 
 ## Graph model
 
 - A graph edge is one datom of the form `entity -[edge attribute]-> Ref(target)`.
 - Only outgoing `Ref` values participate. Scalar values on the selected attribute are ignored.
 - Edges are directed. A fact from `A` to `B` does not imply an edge from `B` to `A`.
-- Duplicate asserted edges are represented by the database's datom/index semantics; callers must not rely on duplicate edges producing duplicate traversal or ranking results.
+- Duplicate asserted edges follow the database's datom/index semantics; callers must not rely on duplicate edges producing duplicate traversal or ranking results.
 - Self-loops are valid directed edges. They are visible to cycle detection and cause topological sort to reject the graph as cyclic.
 - Nodes are discovered from edge endpoints. Isolated entities with no selected edge are not graph nodes for global algorithms.
 
@@ -17,7 +17,6 @@ AaronDB graph clauses operate over **directed** reference-valued facts in the lo
 - `max_depth` bounds expansion by hop count. `Some(0)` permits only the trivial path from a node to itself; a negative bound expands no edges.
 - `reachable` returns the directed transitive closure **including the start node**, even when it has no outgoing edges.
 - `neighbors` returns unique directed neighbors within at most `depth` hops and excludes the start node. A depth of zero or less returns no nodes.
-- Traversal is local to one `DbState`; it has no source provenance, remote fan-out, migration, failover, or HA semantics.
 
 ## Global algorithm semantics
 
@@ -28,6 +27,27 @@ AaronDB graph clauses operate over **directed** reference-valued facts in the lo
 - `betweenness_centrality` runs unweighted directed Brandes traversal. It is local and has `O(V*E)` worst-case work.
 - `pagerank` runs a fixed number of local iterations over directed edges. It returns an empty map for an empty graph or invalid parameters (`damping` outside `[0.0, 1.0]`, or non-positive iterations). Rank-map order is not contractual.
 
-## Resource and maturity limits
+## Bounded APIs
 
-The APIs do not currently expose cancellation, node/edge budgets, timeout controls, benchmark envelopes, or distributed execution. Global algorithms materialize the selected local graph and should be used only on caller-bounded datasets. AaronDB makes no throughput, memory, latency, or distributed-consistency claim for graph processing yet.
+New callers traversing arbitrary data should construct `traversal_limits(max_visits, max_results)` and use `reachable_bounded`.
+
+- Both limits must be positive.
+- The start node counts against both limits.
+- Over-budget traversal returns `VisitBudgetExceeded` or `ResultLimitExceeded`; invalid limits return `InvalidLimit` before traversal begins.
+
+New callers running graph-wide work should construct `graph_limits(max_nodes, max_edges, max_iterations)` and use:
+
+- `pagerank_bounded`
+- `connected_components_bounded`
+- `cycle_detect_bounded`
+- `betweenness_centrality_bounded`
+- `topological_sort_bounded`
+- `strongly_connected_components_bounded`
+
+All limits must be positive. The bounded APIs fail without returning partial graph results with `InvalidGraphLimit`, `NodeBudgetExceeded`, `EdgeBudgetExceeded`, or `IterationBudgetExceeded`. `pagerank_bounded` additionally returns `InvalidPageRankParameters` for invalid damping or iterations. `topological_sort_bounded` preserves the legacy nested result: an outer graph-budget `Result` and an inner DAG/cycle result.
+
+## Evidence and scope
+
+Canonical and budget regression tests cover the public directed graph operators. The reproducible fixture harness (`gleam run -m graph_benchmark`) covers sparse, dense, cyclic, disconnected, chain, and hub graphs; recorded method/results are in [Graph benchmark evidence](../benchmarks/graph.md).
+
+Legacy APIs preserve unbounded local behavior for compatibility. The Stable graph contract is the bounded local API. It does not imply cancellation, deadlines, remote execution, global snapshots, high availability, or universal throughput/memory/latency guarantees.

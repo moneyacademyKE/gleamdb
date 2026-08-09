@@ -30,22 +30,27 @@ pub fn handle_tick(state: state.DbState) -> state.DbState {
       case cold {
         [] -> acc
         _ -> {
-          let _ = storage.append(state.adapter, cold)
-          case state.ets_name {
-            Some(name) -> {
-              list.each(cold, fn(d) {
-                let _ = ets_index.insert_datom(name <> "_eavt", d.entity, d)
-                let _ = ets_index.insert_datom(name <> "_aevt", d.attribute, d)
-              })
+          case storage.append(state.adapter, cold) {
+            Error(_) -> acc
+            Ok(Nil) -> {
+              case state.ets_name {
+                Some(name) -> {
+                  list.each(cold, fn(d) {
+                    let _ = ets_index.insert_datom(name <> "_eavt", d.entity, d)
+                    let _ =
+                      ets_index.insert_datom(name <> "_aevt", d.attribute, d)
+                  })
+                }
+                None -> Nil
+              }
+              let next_eavt = index.evict_from_memory(acc_eavt, cold)
+              let next_aevt =
+                list.fold(cold, acc_aevt, fn(a, d) { index.delete_aevt(a, d) })
+              let next_avet =
+                list.fold(cold, acc_avet, fn(a, d) { index.delete_avet(a, d) })
+              #(next_eavt, next_aevt, next_avet)
             }
-            None -> Nil
           }
-          let next_eavt = index.evict_from_memory(acc_eavt, cold)
-          let next_aevt =
-            list.fold(cold, acc_aevt, fn(a, d) { index.delete_aevt(a, d) })
-          let next_avet =
-            list.fold(cold, acc_avet, fn(a, d) { index.delete_avet(a, d) })
-          #(next_eavt, next_aevt, next_avet)
         }
       }
     })

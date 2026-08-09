@@ -1,6 +1,6 @@
 # Vector Search Contract
 
-AaronDB's vector search is an in-memory approximate nearest-neighbour capability built on the `aarondb/vec_index` HNSW index. It is Beta. This document defines the behavior callers can rely on today and, equally importantly, the behavior that is not claimed.
+AaronDB's vector search is an in-memory approximate nearest-neighbour capability built on the `aarondb/vec_index` HNSW index. It is **Stable for the documented local approximate contract**: deterministic regression configuration, exact-oracle comparison, lifecycle churn coverage, a reproducible benchmark harness, and CI evidence. It is not a universal latency, memory, or recall SLA.
 
 ## Similarity semantics
 
@@ -8,7 +8,7 @@ AaronDB's vector search is an in-memory approximate nearest-neighbour capability
 - HNSW normalizes every stored vector and every query vector; its dot-product score is therefore cosine similarity for valid non-zero vectors.
 - Scores are in the inclusive range `[-1.0, 1.0]` for finite, non-zero inputs.
 - The `threshold` is inclusive: a result is returned when `score >= threshold`.
-- Results are sorted in descending score order. Equal-score ordering is not part of the current public contract.
+- Results are sorted in descending score order. Equal-score ordering is ascending entity ID.
 
 ## Input validation
 
@@ -23,9 +23,9 @@ A vector index establishes its dimension from its first accepted vector.
 
 ## Approximation boundary
 
-`VecIndex` is an HNSW approximate index. It does **not** promise exhaustive nearest-neighbour results or a recall percentage yet. Its graph construction currently uses runtime randomness and is not deterministic across runs.
+`VecIndex` is an HNSW approximate index. Its production graph construction uses runtime randomness, so topology and recall can differ between runs. For a deterministic finite-corpus reference, use `exact_search`: it returns the same `SearchResult` type and validation behavior, and orders ties by ascending entity ID after descending score.
 
-For exact, testable cosine comparisons, use `aarondb/math.cosine_similarity` over a caller-owned finite corpus. AaronDB does not yet expose an exact corpus-search API or latency/recall SLA.
+The committed deterministic evidence corpus reports recall@5 = 1.00, and its 1,000-operation lifecycle soak reports recall@10 = 1.00. A reproducible 1,000-vector local benchmark also records a 14,533 ms build, 18 ms p50 / 20 ms p95 HNSW top-10 query sample, and recall@10 = 1.00 on its stated macOS/Gleam-Erlang environment; see `docs/reports/2026-08-08-vector-hnsw-evidence.md`. These are regression fixtures and a machine-local sample, **not** universal latency, memory, or recall SLAs.
 
 ## Lifecycle
 

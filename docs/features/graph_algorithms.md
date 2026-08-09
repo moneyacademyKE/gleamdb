@@ -1,144 +1,40 @@
 # Graph Algorithms (Native Predicates)
 
-GleamDB provides **9 native graph algorithms** implemented as "Magic Predicates" within the Datalog engine. This allows for complex network analysis — cycle detection, centrality scoring, topological ordering — without leaving the logic paradigm.
+AaronDB provides **nine local directed graph algorithms** as Datalog body clauses. They operate over reference-valued facts in one in-memory `DbState`; they are not a distributed graph service.
 
-## Philosophy: De-complected Traversals
+The authoritative behavior and resource contract is [Graph Query Contract](../manual/graph_queries.md). That document overrides historical examples or performance claims.
 
-1.  **Uniformity**: Every algorithm is exposed as a standard `BodyClause` variant.
-2.  **Composability**: Predicates compose freely with Datalog joins, filters, and aggregates.
-3.  **Index-Native**: All algorithms directly traverse `EAVT`/`AEVT` indices — no external graph database needed.
-4.  **Purely Functional**: ~700 lines of immutable, recursion-based algorithms in `algo/graph.gleam`.
+## Predicate reference
 
-## Predicate Reference
+| DSL Function | Algorithm | Directed semantics | Work profile |
+| --- | --- | --- | --- |
+| `q.shortest_path` | breadth-first search | Minimum-hop path following outgoing edges | `O(V + E)` in selected local graph |
+| `q.pagerank` | fixed-iteration power method | Incoming rank over outgoing edges | `O(V × iterations)` |
+| `q.reachable` | breadth-first flood | Directed closure, including source | `O(V + E)` |
+| `q.connected_components` | directed flood-fill | Labels nodes reached by outgoing-edge floods; **not weak/undirected components** | `O(V + E)` per flood in worst case |
+| `q.neighbors` | depth-bounded breadth-first search | Unique outgoing neighbors within depth | bounded by requested depth, not total work |
+| `q.cycle_detect` | DFS back-edge detection | Directed cycles | `O(V + E)` |
+| `q.betweenness_centrality` | unweighted directed Brandes | Directed shortest paths | `O(V × E)` |
+| `q.topological_sort` | Kahn's algorithm | Directed DAG ordering | `O(V + E)` |
+| `q.strongly_connected_components` | Tarjan's algorithm | Mutual directed reachability | `O(V + E)` |
 
-| # | DSL Function | Algorithm | Complexity | Use Case |
-|---|-------------|-----------|------------|----------|
-| 1 | `q.shortest_path` | BFS | O(V+E) | Path finding between two nodes |
-| 2 | `q.pagerank` | Iterative Power | O(V×I) | Influence/importance ranking |
-| 3 | `q.reachable` | BFS flood | O(V+E) | Transitive closure from a node |
-| 4 | `q.connected_components` | BFS flood-fill | O(V+E) | Undirected cluster labeling |
-| 5 | `q.neighbors` | Bounded BFS | O(V+E) | K-hop neighborhood exploration |
-| 6 | `q.cycle_detect` | DFS back-edge | O(V+E) | Circular dependency / wash-trade detection |
-| 7 | `q.betweenness_centrality` | Brandes' | O(V×E) | Gatekeeper / broker node identification |
-| 8 | `q.topological_sort` | Kahn's | O(V+E) | DAG ordering / dependency resolution |
-| 9 | `q.strongly_connected_components` | Tarjan's | O(V+E) | Directed mutual-reachability clusters |
+## Contracts worth knowing
 
-## Usage Examples
+- Edges are `entity -[attribute]-> Ref(target)`. Scalar values are ignored.
+- Self-loops are valid edges, are cycles, and cause topological sorting to fail.
+- Nodes are discovered from selected edge endpoints; isolated entities are not included in global graph algorithms.
+- `shortest_path` is unweighted and includes both endpoints.
+- `reachable` includes its source. `neighbors` excludes its source and returns no nodes for depth zero or less.
+- PageRank returns an empty map for an empty graph, invalid damping outside `0.0..1.0`, or non-positive iterations.
+- Topological ordering among independent nodes and cycle-detection output ordering are intentionally unspecified.
 
-### 1. Shortest Path
-```gleam
-let query = q.new()
-  |> q.where(q.v("start"), "city/name", q.s("London"))
-  |> q.where(q.v("end"), "city/name", q.s("Paris"))
-  |> q.shortest_path(q.v("start"), q.v("end"), "route/to", "path")
-  |> q.to_clauses()
-```
+## Bounded traversal
 
-### 2. PageRank
-```gleam
-let query = q.new()
-  |> q.pagerank("node", "link", "rank")
-  |> q.order_by("rank", Desc)
-  |> q.limit(10)
-  |> q.to_clauses()
-```
+Legacy APIs remain for compatibility. New callers traversing arbitrary local data should use `graph.traversal_limits` with `graph.reachable_bounded`:
 
-### 3. Reachable (Transitive Closure)
-```gleam
-let query = q.new()
-  |> q.where(q.v("root"), "name", q.s("Alice"))
-  |> q.reachable(q.v("root"), "follows", "reached")
-  |> q.to_clauses()
-```
+- Both visit and result limits must be positive.
+- The start node counts against both limits.
+- Exceeded work returns `VisitBudgetExceeded` or `ResultLimitExceeded`; invalid limits return `InvalidLimit`.
 
-### 4. Connected Components
-```gleam
-let query = q.new()
-  |> q.connected_components("friend_of", "person", "cluster")
-  |> q.to_clauses()
-```
-
-### 5. K-hop Neighbors
-```gleam
-let query = q.new()
-  |> q.where(q.v("me"), "name", q.s("Bob"))
-  |> q.neighbors(q.v("me"), "knows", 2, "friend")
-  |> q.to_clauses()
-```
-
-### 6. Cycle Detection
-```gleam
-// Find circular trading patterns (wash-trade detection)
-let query = q.new()
-  |> q.cycle_detect("trades_with", "cycle")
-  |> q.to_clauses()
-```
-
-### 7. Betweenness Centrality
-```gleam
-// Find gatekeeper nodes in a network
-let query = q.new()
-  |> q.betweenness_centrality("link", "node", "score")
-  |> q.order_by("score", Desc)
-  |> q.limit(5)
-  |> q.to_clauses()
-```
-
-### 8. Topological Sort
-```gleam
-// Order build dependencies
-let query = q.new()
-  |> q.topological_sort("depends_on", "module", "build_order")
-  |> q.order_by("build_order", Asc)
-  |> q.to_clauses()
-```
-
-### 9. Strongly Connected Components (Tarjan's)
-```gleam
-// Find mutual-reachability clusters (trading rings, circular imports)
-let query = q.new()
-  |> q.strongly_connected_components("imports", "module", "scc_id")
-  |> q.to_clauses()
-```
-
-## Technical Details
-
-- **Shortest Path**: BFS with path tracking. Returns `fact.List(Ref)`.
-- **PageRank**: Iterative power method (damping=0.85, 20 iterations). Returns `fact.Float`.
-- **Reachable**: BFS flood from source. Includes source node in results.
-- **Connected Components**: Undirected flood-fill. Each node gets an `Int` component ID.
-- **Neighbors**: Depth-bounded BFS. Excludes source node from results.
-- **Cycle Detect**: DFS with back-edge tracking. Returns each cycle as `fact.List(Ref)`.
-- **Betweenness Centrality**: Brandes' algorithm. Returns `fact.Float` score per node.
-- **Topological Sort**: Kahn's BFS-based algorithm. Returns `Int` position. Empty result if cycles exist.
-- **Strongly Connected Components**: Tarjan's DFS algorithm. Returns `Int` component ID per node.
-
-All algorithms use the shared `build_graph` infrastructure which constructs adjacency lists from the `AEVT` index.
-
-## Graph Traversal DSL (Phase 60)
-
-For simpler multi-hop relationship queries that don't require full Datalog, GleamDB provides a **constrained traversal DSL**:
-
-```gleam
-import gleamdb
-import gleamdb/fact
-import gleamdb/shared/types.{Out, In}
-
-// Alice → friends → posts ← likes
-let assert Ok(likers) = gleamdb.traverse(
-  db,
-  fact.uid(1),
-  [Out("user/friends"), Out("user/posts"), In("likes/post")],
-  5  // max_depth guard
-)
-```
-
-| Step | Direction | Resolution |
-|------|-----------|------------|
-| `Out(attr)` | Entity → Value | Chases `Ref` values via EAVT |
-| `In(attr)` | Value ← Entity | Reverse-resolves via AEVT |
-
-- **Depth Guard**: Expressions longer than `max_depth` return `Error("DepthLimitExceeded")`.
-- **Deduplication**: Results are deduplicated per hop via `list.unique()`.
-- **ETS Fast-Path**: Uses ETS indices when `ets_name` is available.
+Global algorithms still materialize the selected local graph through legacy APIs. New callers use the bounded global entry points, which return typed node/edge/iteration budget errors rather than partial results. The Stable graph contract remains local-only: it does not add cancellation, remote execution, global snapshots, high availability, or universal throughput/memory/latency guarantees.
 

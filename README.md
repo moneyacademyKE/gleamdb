@@ -1,12 +1,16 @@
 # AaronDB
 
-> "Simplicity is not about making things easy. It is about untangling complexity." - Rich Hickey
+[![Hex](https://img.shields.io/hexpm/v/aarondb.svg)](https://hex.pm/packages/aarondb)
 
-> **Current release line:** v4.0.0 hardens persistence, actor timeout, vector, and term-decoding boundaries while formalizing AaronDB as an embedded library with an optional local stdio MCP adapter. See [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md).
+AaronDB is a local, embedded Datalog database for the BEAM. Its documented Stable labels are narrow local contracts backed by committed tests, bounded failure behavior where relevant, reproducible harnesses, and CI; see the [evidence index](docs/evidence.md).
 
-AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest current shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
+> "Simplicity is not about making things easy. It is about untangling complexity." — Rich Hickey
 
-This repository also contains local search, cognitive, sharding, and MCP extensions with deliberately bounded operational contracts. See `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
+> **Current release line:** v4.1.0 defines evidence-backed **local** Stable contracts for vector/HNSW, BM25, graph analytics, and federation. See [Feature Maturity](docs/feature_maturity.md) and [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md).
+
+AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
+
+This repository also contains local search, graph analytics, federation, cognitive, sharding, and MCP extensions. Their supported contracts are deliberately narrow; read `docs/feature_maturity.md` and `docs/project_boundaries.md` before adopting non-core features.
 
 ## Core Model
 
@@ -22,7 +26,7 @@ This repository also contains local search, cognitive, sharding, and MCP extensi
 - Query DSL and interpreted query execution
 - Pull, history, diff, and speculative state evaluation
 - Constraints for uniqueness, cardinality, predicates, and composites
-- Broad automated test coverage
+- Local Stable retrieval/analytics contracts with committed regression and benchmark evidence
 
 ## Maturity Snapshot
 
@@ -30,12 +34,28 @@ This repository also contains local search, cognitive, sharding, and MCP extensi
 | --- | --- | --- |
 | Core DB API (`aarondb`) | Stable | Primary strength of the repository |
 | Query DSL and pull APIs | Stable | Backed by passing tests |
-| Temporal querying and diff | Stable/Beta | Usable, but still tied to large core modules |
-| Graph, vector, BM25, federation | Beta | Vector has an explicit HNSW contract; BM25 is a standalone local index with deterministic lifecycle/ranking semantics; graph and federation remain bounded extensions |
+| Vector / HNSW | Stable (local approximate) | Deterministic evidence and exact-oracle comparison; no universal SLA |
+| BM25 | Stable (local primitive) | Immutable, sequential, caller-owned Analyzer v1 index |
+| Graph analytics | Stable (local bounded API) | Directed graph model; bounded APIs are the supported path for arbitrary data |
+| Local federation | Stable (local fail-fast reads) | Named in-runtime sources, provenance, typed failure; no partial results |
+| Temporal querying and diff | Stable (local bounded API) | Transaction-time, valid-time, and bitemporal snapshots plus deterministic bounded diffs; legacy unbounded APIs are compatibility-only |
+| Reactive subscriptions | Stable (local mailbox delivery) | Serialized initial/delta/unsubscribe ordering; consumers own mailbox draining |
+| Cognitive memory | Stable (local explicit-fact solver) | Explicit relevance facts with deterministic lifecycle semantics; no learned ranking or external retrieval |
+| Virtual predicates | Stable (bounded local adapters) | Typed local adapter results and row bounds; no remote transport or forced interruption |
 | Sharding and distributed queries | Local Beta | One-runtime scatter/gather only: no remote membership, failover, transactional migration, or exact global Avg/Median |
-| Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication). Retained as a documented stub. See `src/aarondb/raft.gleam` |
+| Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication) |
 | Mnesia persistence | Recovery-oriented | Initialization preserves incompatible schemas and returns an error; explicit backup/migration/reset is required |
 | MCP server and agent tooling | Local Beta | Local stdio JSON-RPC adapter exposes three implemented tools; no network listener or remote authentication |
+
+## Explicitly local means exactly that
+
+The Stable labels above are contracts for one BEAM runtime and stated, reproducible local evidence. They do **not** claim remote federation, replication, high availability, failover, migration, quorum, coordinated writes, global snapshots, distributed graph processing, or universal latency/memory/recall guarantees.
+
+- **Vector:** [cosine HNSW contract](docs/manual/vector_search.md) plus exact oracle, recall/churn regression, and benchmark harness.
+- **BM25:** [Analyzer v1 and lifecycle contract](docs/manual/bm25_search.md); no transaction integration, persistence, or concurrent mutation safety.
+- **Graph:** [directed bounded analytics contract](docs/manual/graph_queries.md); legacy APIs remain unbounded compatibility paths.
+- **Temporal/Diff:** [bounded local snapshot and diff contract](docs/manual/temporal_diff.md), with lifecycle/invariant tests and a reproducible [CI evidence harness](docs/benchmarks/temporal_diff.md); no remote/global snapshots or universal performance claims.
+- **Federation:** [local fail-fast read contract](docs/manual/local_federation.md); no cross-source transaction/snapshot, retries, or partial result mode.
 
 ## Installation
 
@@ -43,22 +63,19 @@ Add the current release to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "4.0.0"
+aarondb = "4.1.0"
 ```
 
-## What 4.0.0 Changes
+## What 4.1.0 Changes
 
-AaronDB 4.0.0 is a **breaking hardening release**. It makes previously implicit or unsafe boundary behavior explicit.
+AaronDB 4.1.0 promotes four capabilities only within evidence-backed local boundaries:
 
-- **Safe term decoding** — serialized rules and raw ETS terms now use safe Erlang external-term decoding and reject malformed or wrong-shaped payloads.
-- **Truthful actor timeouts** — startup honors the timeout supplied by callers; public actor operations return timeout errors rather than crashing on an unanswered receive.
-- **Vector dimension contracts** — HNSW indexes establish one dimension and reject mismatched insert/search vectors; retrieval skips incompatible stored vectors instead of truncating scores.
-- **Non-destructive Mnesia startup** — an incompatible `datoms` schema produces an error and preserves persisted data; backup/migration/reset is an explicit operator action.
-- **Local MCP is real, but local** — the stdio adapter supports `initialize`, `tools/list`, and the three implemented tools; it is not a network service.
-- **Release assurance and package trust** — CI builds docs and lints workflows; the repository now includes Apache-2.0 licensing and a security policy.
-- **Distributed limits are explicit** — sharding remains local Beta, Raft remains an inactive stub, and Mnesia remains recovery-oriented.
+- **Vector/HNSW** — deterministic test configuration, exact cosine oracle, recall corpus, lifecycle churn regression, and reproducible local benchmark.
+- **BM25** — Analyzer v1, deterministic golden ranking/lifecycle tests, incremental-vs-rebuild evidence, and reproducible local benchmark.
+- **Graph** — directed semantics, canonical/budget regression coverage, bounded traversal/global APIs, and representative local fixture benchmarks.
+- **Federation** — per-source execution, deterministic provenance/order, typed fail-fast unavailable/timeout errors, no partial result leakage, and a local soak harness.
 
-See [CHANGELOG.md](CHANGELOG.md), [Feature Maturity](docs/feature_maturity.md), and [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md) for the supported contract.
+The release does not turn AaronDB into a distributed system. See [CHANGELOG.md](CHANGELOG.md) for the full release notes.
 
 ## Basic Usage
 
@@ -107,14 +124,6 @@ let history = aarondb.history(db, fact.Uid(fact.EntityId(101)))
 let entity = aarondb.pull(db, fact.Uid(fact.EntityId(101)), aarondb.pull_all())
 ```
 
-Start a sharded cluster when you explicitly want the experimental distributed layer:
-
-```gleam
-import aarondb/sharded
-
-let assert Ok(cluster) = sharded.start_sharded("cluster", 4, None)
-```
-
 ## Documentation
 
 - [Architecture](docs/architecture.md)
@@ -125,9 +134,10 @@ let assert Ok(cluster) = sharded.start_sharded("cluster", 4, None)
 - [Supervision](docs/manual/supervision.md)
 - [Vector search contract](docs/manual/vector_search.md)
 - [BM25 search contract](docs/manual/bm25_search.md)
+- [Graph query contract](docs/manual/graph_queries.md)
 - [Local federation contract](docs/manual/local_federation.md)
 - [Distributed Guide](docs/distributed_guide.md)
 
 ## Current Recommendation
 
-Treat AaronDB first as a temporal Datalog engine with a strong in-memory core. Adopt peripheral layers only with explicit evaluation of their maturity and operational trade-offs.
+Treat AaronDB first as a temporal Datalog engine with a strong in-memory core. The v4.1 local contracts are ready for their stated use, but distributed features remain deliberately separate work—not marketing adjectives.

@@ -1,11 +1,11 @@
 //// Local, in-runtime federation over independently owned AaronDB databases.
-//// Local, in-runtime federation over independently owned AaronDB databases.
 ////
 //// This module deliberately composes local database actors only. It does not
 //// provide remote transport, coordinated writes, failover, quorum, or HA.
 
 import aarondb/engine
 import aarondb/fact
+import aarondb/process_extra
 import aarondb/shared/ast
 import aarondb/transactor
 import gleam/dict.{type Dict}
@@ -20,6 +20,11 @@ pub type Source {
 
 pub type Federation {
   Federation(sources: List(Source))
+}
+
+pub type FederationError {
+  SourceUnavailable(name: String)
+  SourceTimeout(name: String)
 }
 
 pub type FederatedRow {
@@ -46,29 +51,63 @@ pub fn new(sources: List(Source)) -> Result(Federation, String) {
   }
 }
 
-/// Run a query against each source in stable source-name order.
+/// Run a query against every live source in stable source-name order.
 ///
-/// Results retain their origin in `FederatedRow.source`. Sources are queried
-/// independently: there is no cross-source transaction or snapshot guarantee.
-pub fn query(federation: Federation, query: ast.Query) -> FederatedResult {
+/// This is the fail-fast federation API. It returns no result if any source is
+/// unavailable or fails to reply before `timeout_ms`; callers therefore cannot
+/// accidentally treat partial source successes as a complete federated read.
+pub fn query_with_timeout(
+  federation: Federation,
+  query: ast.Query,
+  timeout_ms: Int,
+) -> Result(FederatedResult, FederationError) {
   let Federation(sources:) = federation
   let ordered_sources = list.sort(sources, compare_source)
-  let rows =
-    list.fold(ordered_sources, [], fn(acc, source) {
-      let Source(name:, db:) = source
-      let result = engine.run(transactor.get_state(db), query, [], None, None)
-      let sourced_rows =
-        list.map(result.rows, fn(row) { FederatedRow(source: name, row: row) })
-      list.append(acc, sourced_rows)
-    })
+  query_sources(ordered_sources, query, timeout_ms, [], [])
+}
 
-  FederatedResult(
-    rows: rows,
-    sources: list.map(ordered_sources, fn(source) {
-      let Source(name:, ..) = source
-      name
-    }),
-  )
+/// Run a query using the default five-second source deadline.
+///
+/// See `query_with_timeout` for the fail-fast failure contract.
+pub fn query(
+  federation: Federation,
+  query: ast.Query,
+) -> Result(FederatedResult, FederationError) {
+  query_with_timeout(federation, query, 5000)
+}
+
+fn query_sources(
+  sources: List(Source),
+  query: ast.Query,
+  timeout_ms: Int,
+  rows: List(FederatedRow),
+  names: List(String),
+) -> Result(FederatedResult, FederationError) {
+  case sources {
+    [] -> Ok(FederatedResult(rows: rows, sources: names))
+    [Source(name:, db:), ..rest] ->
+      case process_extra.is_alive(db) {
+        False -> Error(SourceUnavailable(name))
+        True ->
+          case transactor.get_state_with_timeout(db, timeout_ms) {
+            Error(_) -> Error(SourceTimeout(name))
+            Ok(source_state) -> {
+              let result = engine.run(source_state, query, [], None, None)
+              let sourced_rows =
+                list.map(result.rows, fn(row) {
+                  FederatedRow(source: name, row: row)
+                })
+              query_sources(
+                rest,
+                query,
+                timeout_ms,
+                list.append(rows, sourced_rows),
+                list.append(names, [name]),
+              )
+            }
+          }
+      }
+  }
 }
 
 fn validate_names(

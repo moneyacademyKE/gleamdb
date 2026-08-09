@@ -9,6 +9,18 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/set
 
+/// Solve AaronDB's local cognitive clause over explicit engram facts.
+///
+/// An entity matches only when it has active `engram/concept` and
+/// `engram/context` facts matching the supplied parts. Its relevance is the
+/// maximum active numeric `engram/relevance` value; an entity with no relevance
+/// fact has relevance `1.0`, while one with only non-numeric relevance facts has
+/// relevance `0.0`. The threshold comparison is inclusive.
+///
+/// This module performs no learning, decay, vector embedding, or external
+/// retrieval. Relevance changes only through ordinary fact assertions and
+/// retractions, and temporal bases select the active facts visible at that
+/// basis.
 pub fn solve(
   db_state: state.DbState,
   concept: ast.Part,
@@ -52,13 +64,12 @@ pub fn solve(
       |> entity.filter_active(db_state)
 
     let score = case relevance_datoms {
-      [d, ..] ->
-        case d.value {
-          fact.Float(f) -> f
-          fact.Int(i) -> int.to_float(i)
-          _ -> 0.0
-        }
       [] -> 1.0
+      datoms ->
+        case max_numeric_relevance(datoms) {
+          Some(value) -> value
+          None -> 0.0
+        }
     }
 
     case score >=. threshold {
@@ -66,6 +77,29 @@ pub fn solve(
       False -> Error(Nil)
     }
   })
+}
+
+fn max_numeric_relevance(datoms: List(fact.Datom)) -> Option(Float) {
+  datoms
+  |> list.filter_map(relevance_value)
+  |> list.fold(None, fn(best, value) {
+    case best {
+      None -> Some(value)
+      Some(previous) ->
+        case value >. previous {
+          True -> Some(value)
+          False -> Some(previous)
+        }
+    }
+  })
+}
+
+fn relevance_value(datom: fact.Datom) -> Result(Float, Nil) {
+  case datom.value {
+    fact.Float(value) -> Ok(value)
+    fact.Int(value) -> Ok(int.to_float(value))
+    _ -> Error(Nil)
+  }
 }
 
 fn resolve_part(

@@ -113,11 +113,18 @@ pub fn store_rule(
 
   case compute_next_state(db_state, [rule_fact], None, fact.Assert) {
     Ok(#(final_state, datoms)) -> {
-      let _ = storage.insert(final_state.adapter, datoms)
-      let final_state_with_rules =
-        shared_state.DbState(..final_state, stored_rules: new_rules)
-      process.send(reply_to, Ok(Nil))
-      actor.continue(final_state_with_rules)
+      case storage.insert(final_state.adapter, datoms) {
+        Ok(Nil) -> {
+          let final_state_with_rules =
+            shared_state.DbState(..final_state, stored_rules: new_rules)
+          process.send(reply_to, Ok(Nil))
+          actor.continue(final_state_with_rules)
+        }
+        Error(error) -> {
+          process.send(reply_to, Error(storage.error_message(error)))
+          actor.continue(db_state)
+        }
+      }
     }
     Error(e) -> {
       process.send(reply_to, Error(e))

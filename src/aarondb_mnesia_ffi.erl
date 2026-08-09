@@ -2,13 +2,31 @@
 -export([init/0, persist/1, persist_batch/1, recover/0, select/1]).
 
 init() ->
+    case ensure_mnesia_started() of
+        ok -> ensure_datoms_table();
+        {error, _} = Error -> Error
+    end.
+
+ensure_mnesia_started() ->
     case mnesia:system_info(is_running) of
         yes -> ok;
         _ ->
-            _ = mnesia:create_schema([node()]),
-            application:ensure_all_started(mnesia)
-    end,
+            case mnesia:create_schema([node()]) of
+                ok -> start_mnesia();
+                {error, {_, {already_exists, _}}} -> start_mnesia();
+                {error, Reason} ->
+                    {error, list_to_binary(io_lib:format("failed to create Mnesia schema: ~p", [Reason]))}
+            end
+    end.
 
+start_mnesia() ->
+    case application:ensure_all_started(mnesia) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            {error, list_to_binary(io_lib:format("failed to start Mnesia: ~p", [Reason]))}
+    end.
+
+ensure_datoms_table() ->
     ExpectedAttrs = [entity, attribute, value, tx, tx_index, valid_time, operation],
     case table_attributes(datoms) of
         {ok, ExpectedAttrs} ->
@@ -64,15 +82,19 @@ schema_mismatch_message(ExpectedAttrs, ActualAttrs) ->
     ).
 
 persist(Datom) ->
-    mnesia:dirty_write(datoms, Datom),
-    nil.
+    case mnesia:transaction(fun() -> mnesia:write(datoms, Datom, write) end) of
+        {atomic, ok} -> {ok, nil};
+        {aborted, Reason} -> {error, list_to_binary(io_lib:format("~p", [Reason]))}
+    end.
 
 persist_batch(Datoms) ->
     F = fun() ->
         lists:foreach(fun(D) -> mnesia:write(datoms, D, write) end, Datoms)
     end,
-    mnesia:transaction(F),
-    nil.
+    case mnesia:transaction(F) of
+        {atomic, ok} -> {ok, nil};
+        {aborted, Reason} -> {error, list_to_binary(io_lib:format("~p", [Reason]))}
+    end.
 
 recover() ->
     F = fun() ->
