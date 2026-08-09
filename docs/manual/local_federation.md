@@ -1,6 +1,6 @@
 # Local federation contract
 
-> **Status: Beta.** Local federation composes independently owned AaronDB
+> **Status: Stable (local fail-fast reads).** Local federation composes independently owned AaronDB
 > databases inside one BEAM runtime. It is not sharding, remote federation,
 > replication, or high availability.
 

@@ -1,6 +1,6 @@
 # Vector Search Contract
 
-AaronDB's vector search is an in-memory approximate nearest-neighbour capability built on the `aarondb/vec_index` HNSW index. It is Beta. This document defines the behavior callers can rely on today and, equally importantly, the behavior that is not claimed.
+AaronDB's vector search is an in-memory approximate nearest-neighbour capability built on the `aarondb/vec_index` HNSW index. It is **Stable for the documented local approximate contract**: deterministic regression configuration, exact-oracle comparison, lifecycle churn coverage, a reproducible benchmark harness, and CI evidence. It is not a universal latency, memory, or recall SLA.
 
 ## Similarity semantics
 

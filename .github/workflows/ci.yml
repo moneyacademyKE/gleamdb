@@ -35,6 +35,7 @@ jobs:
       - run: gleam run -m bm25_benchmark
       - run: gleam run -m graph_benchmark
       - run: gleam run -m federation_benchmark
+      - run: gleam run -m temporal_diff_benchmark
 
   workflow-lint:
     runs-on: ubuntu-latest

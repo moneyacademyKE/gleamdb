@@ -34,7 +34,10 @@ This repository also contains local search, graph analytics, federation, cogniti
 | BM25 | Stable (local primitive) | Immutable, sequential, caller-owned Analyzer v1 index |
 | Graph analytics | Stable (local bounded API) | Directed graph model; bounded APIs are the supported path for arbitrary data |
 | Local federation | Stable (local fail-fast reads) | Named in-runtime sources, provenance, typed failure; no partial results |
-| Temporal querying and diff | Stable/Beta | Usable, but still tied to large core modules |
+| Temporal querying and diff | Stable (local bounded API) | Transaction-time, valid-time, and bitemporal snapshots plus deterministic bounded diffs; legacy unbounded APIs are compatibility-only |
+| Reactive subscriptions | Stable (local mailbox delivery) | Serialized initial/delta/unsubscribe ordering; consumers own mailbox draining |
+| Cognitive memory | Stable (local explicit-fact solver) | Explicit relevance facts with deterministic lifecycle semantics; no learned ranking or external retrieval |
+| Virtual predicates | Stable (bounded local adapters) | Typed local adapter results and row bounds; no remote transport or forced interruption |
 | Sharding and distributed queries | Local Beta | One-runtime scatter/gather only: no remote membership, failover, transactional migration, or exact global Avg/Median |
 | Raft and HA claims | Inactive stub | Pure leader-election state machine exists but is **not wired into the engine** (election-only; no log replication) |
 | Mnesia persistence | Recovery-oriented | Initialization preserves incompatible schemas and returns an error; explicit backup/migration/reset is required |
@@ -47,6 +50,7 @@ The Stable labels above are contracts for one BEAM runtime and stated, reproduci
 - **Vector:** [cosine HNSW contract](docs/manual/vector_search.md) plus exact oracle, recall/churn regression, and benchmark harness.
 - **BM25:** [Analyzer v1 and lifecycle contract](docs/manual/bm25_search.md); no transaction integration, persistence, or concurrent mutation safety.
 - **Graph:** [directed bounded analytics contract](docs/manual/graph_queries.md); legacy APIs remain unbounded compatibility paths.
+- **Temporal/Diff:** [bounded local snapshot and diff contract](docs/manual/temporal_diff.md), with lifecycle/invariant tests and a reproducible [CI evidence harness](docs/benchmarks/temporal_diff.md); no remote/global snapshots or universal performance claims.
 - **Federation:** [local fail-fast read contract](docs/manual/local_federation.md); no cross-source transaction/snapshot, retries, or partial result mode.
 
 ## Installation

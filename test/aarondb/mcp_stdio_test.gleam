@@ -46,3 +46,51 @@ pub fn non_jsonrpc_2_request_is_rejected_test() {
   let assert Some(error) = response.error
   error.code |> should.equal(-32_600)
 }
+
+pub fn stdio_host_lifecycle_requests_return_protocol_responses_test() {
+  let db = aarondb.new()
+
+  let assert Some(initialized) =
+    stdio.serve_line(
+      db,
+      "{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"initialize\",\"params\":{}}",
+    )
+  initialized.error |> should.equal(None)
+
+  stdio.serve_line(
+    db,
+    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}",
+  )
+  |> should.equal(None)
+
+  let assert Some(tools) =
+    stdio.serve_line(
+      db,
+      "{\"jsonrpc\":\"2.0\",\"id\":\"tools\",\"method\":\"tools/list\",\"params\":{}}",
+    )
+  tools.error |> should.equal(None)
+
+  let assert Some(unknown) =
+    stdio.serve_line(
+      db,
+      "{\"jsonrpc\":\"2.0\",\"id\":\"unknown\",\"method\":\"unsupported\",\"params\":{}}",
+    )
+  let assert Some(error) = unknown.error
+  error.code |> should.equal(-32_601)
+}
+
+pub fn stdio_suppresses_cancel_notification_response_test() {
+  let db = aarondb.new()
+  stdio.serve_line(
+    db,
+    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{}}",
+  )
+  |> should.equal(None)
+}
+
+pub fn stdio_returns_parse_error_for_malformed_request_test() {
+  let db = aarondb.new()
+  let assert Some(response) = stdio.serve_line(db, "{")
+  let assert Some(error) = response.error
+  error.code |> should.equal(-32_700)
+}

@@ -35,6 +35,51 @@ pub type QueryResult =
 pub type BodyClause =
   ast.BodyClause
 
+/// Explicit limits for a local temporal history scan.
+///
+/// `max_datoms` is a hard upper bound: bounded APIs return an error rather
+/// than a partial answer when the current local history exceeds it.
+pub type TemporalScanLimits {
+  TemporalScanLimits(max_datoms: Int)
+}
+
+pub type TemporalScanError {
+  InvalidTemporalScanLimit
+  TemporalScanBudgetExceeded
+}
+
+/// Explicit limits for a local transaction-history diff scan.
+///
+/// `max_datoms` is a hard upper bound: bounded diffs return an error rather
+/// than a partial change set when the current local history exceeds it.
+pub type DiffScanLimits {
+  DiffScanLimits(max_datoms: Int)
+}
+
+pub type DiffScanError {
+  InvalidDiffRange
+  InvalidDiffScanLimit
+  DiffScanBudgetExceeded
+}
+
+pub fn diff_scan_limits(
+  max_datoms: Int,
+) -> Result(DiffScanLimits, DiffScanError) {
+  case max_datoms > 0 {
+    True -> Ok(DiffScanLimits(max_datoms))
+    False -> Error(InvalidDiffScanLimit)
+  }
+}
+
+pub fn temporal_scan_limits(
+  max_datoms: Int,
+) -> Result(TemporalScanLimits, TemporalScanError) {
+  case max_datoms > 0 {
+    True -> Ok(TemporalScanLimits(max_datoms))
+    False -> Error(InvalidTemporalScanLimit)
+  }
+}
+
 pub type SpeculativeResult {
   SpeculativeResult(state: state.DbState, datoms: List(fact.Datom))
 }
@@ -277,9 +322,34 @@ pub fn pull(db: Db, eid: fact.Eid, pattern: PullPattern) -> PullResult {
   engine.pull(state, id, pattern)
 }
 
+/// Returns all local datoms committed in `(from_tx, to_tx]`.
+///
+/// This compatibility API has no scan budget and may return index-dependent
+/// order. Use `diff_bounded` for a typed, deterministically ordered result.
 pub fn diff(db: Db, from_tx: Int, to_tx: Int) -> List(fact.Datom) {
   let state = transactor.get_state(db)
   engine.diff(state, from_tx, to_tx)
+}
+
+/// Returns a complete, transaction-ordered diff for `(from_tx, to_tx]` or a
+/// typed error. The bounded API never returns a partial change set.
+pub fn diff_bounded(
+  db: Db,
+  from_tx: Int,
+  to_tx: Int,
+  limits: DiffScanLimits,
+) -> Result(List(fact.Datom), DiffScanError) {
+  case from_tx >= to_tx {
+    True -> Error(InvalidDiffRange)
+    False -> {
+      let DiffScanLimits(max_datoms) = limits
+      let state = transactor.get_state(db)
+      case list.length(index.get_all_datoms(state.eavt)) > max_datoms {
+        True -> Error(DiffScanBudgetExceeded)
+        False -> Ok(engine.diff_ordered(state, from_tx, to_tx))
+      }
+    }
+  }
 }
 
 pub fn pull_all() -> PullPattern {
@@ -432,6 +502,51 @@ pub fn as_of_valid(
   engine.run(state, q, state.stored_rules, None, Some(valid_time))
 }
 
+pub fn as_of_bounded(
+  db: Db,
+  tx: Int,
+  q_clauses: List(BodyClause),
+  limits: TemporalScanLimits,
+) -> Result(QueryResult, TemporalScanError) {
+  let TemporalScanLimits(max_datoms) = limits
+  let state = transactor.get_state(db)
+  case list.length(index.get_all_datoms(state.eavt)) > max_datoms {
+    True -> Error(TemporalScanBudgetExceeded)
+    False -> Ok(as_of(db, tx, q_clauses))
+  }
+}
+
+/// Runs a valid-time snapshot after checking the local history scan budget.
+pub fn as_of_valid_bounded(
+  db: Db,
+  valid_time: Int,
+  q_clauses: List(BodyClause),
+  limits: TemporalScanLimits,
+) -> Result(QueryResult, TemporalScanError) {
+  let TemporalScanLimits(max_datoms) = limits
+  let state = transactor.get_state(db)
+  case list.length(index.get_all_datoms(state.eavt)) > max_datoms {
+    True -> Error(TemporalScanBudgetExceeded)
+    False -> Ok(as_of_valid(db, valid_time, q_clauses))
+  }
+}
+
+/// Runs a bitemporal snapshot after checking the local history scan budget.
+pub fn as_of_bitemporal_bounded(
+  db: Db,
+  tx: Int,
+  valid_time: Int,
+  q_clauses: List(BodyClause),
+  limits: TemporalScanLimits,
+) -> Result(QueryResult, TemporalScanError) {
+  let TemporalScanLimits(max_datoms) = limits
+  let state = transactor.get_state(db)
+  case list.length(index.get_all_datoms(state.eavt)) > max_datoms {
+    True -> Error(TemporalScanBudgetExceeded)
+    False -> Ok(as_of_bitemporal(db, tx, valid_time, q_clauses))
+  }
+}
+
 pub fn as_of_bitemporal(
   db: Db,
   tx: Int,
@@ -482,13 +597,19 @@ pub fn set_config(db: Db, config: state.Config) -> Nil {
   transactor.set_config(db, config)
 }
 
+/// Subscribe to local reactive query updates.
+///
+/// The initial result and later deltas are emitted by the reactive actor in mailbox
+/// order. Delivery is unbounded BEAM mailbox delivery: it does not block writers or
+/// drop updates, so callers must drain their own mailbox. Call `unsubscribe` when
+/// finished; stopped subscribers are also removed on the next notification.
 pub fn subscribe(
   db: Db,
   query: ast.Query,
   subscriber: Subject(query_types.ReactiveDelta),
 ) -> Nil {
-  let state = transactor.get_state(db)
-  let results = engine.run(state, query, [], None, None)
+  let current_state = transactor.get_state(db)
+  let results = engine.run(current_state, query, [], None, None)
 
   let attrs =
     list.filter_map(query.where, fn(c) {
@@ -500,8 +621,21 @@ pub fn subscribe(
     })
 
   let msg = state.Subscribe(query, attrs, subscriber, results)
-  process.send(state.reactive_actor, msg)
-  process.send(subscriber, query_types.Initial(results))
+  process.send(current_state.reactive_actor, msg)
+  Nil
+}
+
+/// Stop local reactive updates for a subscriber.
+///
+/// Unsubscription is ordered with notifications received by the reactive actor:
+/// deltas already sent to the subscriber remain in its mailbox, while later actor
+/// notifications do not produce new deltas for it.
+pub fn unsubscribe(
+  db: Db,
+  subscriber: Subject(query_types.ReactiveDelta),
+) -> Nil {
+  let current_state = transactor.get_state(db)
+  process.send(current_state.reactive_actor, state.Unsubscribe(subscriber))
   Nil
 }
 

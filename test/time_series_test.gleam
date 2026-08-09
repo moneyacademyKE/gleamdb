@@ -48,7 +48,7 @@ pub fn temporal_pagination_test() {
     aarondb.q(
       db,
       q.new()
-        |> q.temporal("val", q.i(1), "tick/price", 50, 60),
+        |> q.temporal_at("val", q.i(1), 50),
     )
 
   let values =

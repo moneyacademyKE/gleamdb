@@ -10,6 +10,13 @@ import gleam/otp/actor
 import gleam/result
 import gleam/set
 
+/// Local reactive subscriptions are serialized by this actor.
+///
+/// Notifications are processed in the order this actor receives them. Each affected
+/// live subscriber receives at most one complete delta per notification, after its
+/// initial result. Delivery uses ordinary BEAM mailboxes: sends never block a writer
+/// and there is no hidden queue, dropping, or flow control. Consumers must drain
+/// their own mailbox; a stopped subscriber is removed on the next notification.
 pub type ReactiveMessage {
   Subscribe(
     query: ast.Query,
@@ -17,6 +24,7 @@ pub type ReactiveMessage {
     subscriber: Subject(query_types.ReactiveDelta),
     initial_state: query_types.QueryResult,
   )
+  Unsubscribe(subscriber: Subject(query_types.ReactiveDelta))
   Notify(changed_attributes: List(String), current_state: state.DbState)
 }
 
@@ -38,8 +46,18 @@ pub fn start_link() -> Result(Subject(state.ReactiveMessage), actor.StartError) 
   |> actor.on_message(fn(st: ReactiveState, msg: state.ReactiveMessage) {
     case msg {
       state.Subscribe(query, attrs, sub, initial_state) -> {
+        // The actor, rather than the caller, sends Initial. This serializes Initial
+        // before any later delta emitted by this actor for the subscription.
+        process.send(sub, query_types.Initial(initial_state))
         let new_query = ActiveQuery(query, attrs, sub, initial_state)
         actor.continue(ReactiveState(queries: [new_query, ..st.queries]))
+      }
+      state.Unsubscribe(subscriber) -> {
+        let remaining =
+          list.filter(st.queries, fn(aq: ActiveQuery) {
+            aq.subscriber != subscriber
+          })
+        actor.continue(ReactiveState(queries: remaining))
       }
       state.Notify(changed_attrs, db_state) -> {
         let new_queries =

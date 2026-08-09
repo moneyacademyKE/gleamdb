@@ -77,3 +77,28 @@ pub fn reactive_delta_test() {
     _ -> should.fail()
   }
 }
+
+pub fn unsubscribe_stops_later_deltas_test() {
+  let db = aarondb.new_with_adapter_and_timeout(None, 1000)
+  let query =
+    q.select(["msg"])
+    |> q.where(q.v("e"), "chat/id", q.i(100))
+    |> q.where(q.v("e"), "chat/msg", q.v("msg"))
+    |> q.to_query()
+  let subject = process.new_subject()
+
+  aarondb.subscribe(db, query, subject)
+  let assert Ok(query_types.Initial(_)) = process.receive(subject, 1000)
+
+  aarondb.unsubscribe(db, subject)
+  let assert Ok(_) =
+    aarondb.transact(db, [
+      #(fact.Uid(fact.EntityId(3)), "chat/id", fact.Int(100)),
+      #(fact.Uid(fact.EntityId(3)), "chat/msg", fact.Str("Not delivered")),
+    ])
+
+  case process.receive(subject, 100) {
+    Ok(_) -> should.fail()
+    Error(_) -> Nil
+  }
+}

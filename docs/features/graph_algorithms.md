@@ -36,5 +36,5 @@ Legacy APIs remain for compatibility. New callers traversing arbitrary local dat
 - The start node counts against both limits.
 - Exceeded work returns `VisitBudgetExceeded` or `ResultLimitExceeded`; invalid limits return `InvalidLimit`.
 
-Global algorithms still materialize the selected local graph and currently have no cancellation, timeout, or global node/edge budget. Do not use them against unbounded application data. This is an explicit Beta boundary, not a hidden footnote.
+Global algorithms still materialize the selected local graph through legacy APIs. New callers use the bounded global entry points, which return typed node/edge/iteration budget errors rather than partial results. The Stable graph contract remains local-only: it does not add cancellation, remote execution, global snapshots, high availability, or universal throughput/memory/latency guarantees.
 

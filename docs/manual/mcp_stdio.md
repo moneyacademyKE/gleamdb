@@ -22,11 +22,20 @@ Example initialization request:
 
 Then call `tools/list` to discover the supported tool schemas. The process exits cleanly at stdin EOF. Malformed JSON receives a JSON-RPC `-32700` parse error; unsupported methods receive `-32601`.
 
+## Lifecycle and flow control
+
+The adapter is deliberately **single-request and synchronous**. It reads one complete newline-delimited request, handles it, writes at most one response, and only then reads the next request. There is no hidden request queue, concurrent tool execution, partial-result mode, or background transport worker.
+
+This gives local hosts a simple backpressure contract: a slow tool call blocks further stdin reads until it completes. A host that needs a hard deadline or cancellation must terminate the child process; `notifications/cancelled` is accepted as a no-response notification, but cannot interrupt a tool call that is already running. EOF is the supported graceful shutdown mechanism.
+
+JSON-RPC requests with an `id` receive one response. Notifications omit `id` and receive no stdout response, including `notifications/initialized` and `notifications/cancelled`. This preserves stdout as a protocol-only stream.
+
 ## Protocol support
 
 - `initialize`
 - `notifications/initialized`
+- `notifications/cancelled` (acknowledged by suppression; no in-flight interruption)
 - `tools/list`
 - `tools/call` for `muninn_remember`, `muninn_recall`, and `muninn_read`
 
-There are no network listeners, background transport tasks, or remote authentication semantics.
+There are no network listeners, background transport tasks, remote authentication semantics, or unsigned-credential security claims.

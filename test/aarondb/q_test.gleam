@@ -34,3 +34,25 @@ pub fn similar_emits_similarity_clause_test() {
     ast.Similarity("x", ast.Val(fact.Vec([0.9, 0.1, 0.0])), 0.85),
   ])
 }
+
+pub fn temporal_at_emits_exact_tx_clause_test() {
+  let query =
+    q.select(["basis"])
+    |> q.temporal_at("basis", q.i(7), 42)
+    |> q.to_query
+
+  should.equal(query.where, [
+    ast.Temporal(ast.Tx, 42, ast.At, "basis", ast.Val(fact.Int(7)), []),
+  ])
+}
+
+pub fn valid_temporal_at_emits_exact_valid_clause_test() {
+  let query =
+    q.select(["basis"])
+    |> q.valid_temporal_at("basis", q.i(7), 2042)
+    |> q.to_query
+
+  should.equal(query.where, [
+    ast.Temporal(ast.Valid, 2042, ast.At, "basis", ast.Val(fact.Int(7)), []),
+  ])
+}

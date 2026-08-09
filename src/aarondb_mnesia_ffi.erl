@@ -64,15 +64,19 @@ schema_mismatch_message(ExpectedAttrs, ActualAttrs) ->
     ).
 
 persist(Datom) ->
-    mnesia:dirty_write(datoms, Datom),
-    nil.
+    case mnesia:transaction(fun() -> mnesia:write(datoms, Datom, write) end) of
+        {atomic, ok} -> {ok, nil};
+        {aborted, Reason} -> {error, list_to_binary(io_lib:format("~p", [Reason]))}
+    end.
 
 persist_batch(Datoms) ->
     F = fun() ->
         lists:foreach(fun(D) -> mnesia:write(datoms, D, write) end, Datoms)
     end,
-    mnesia:transaction(F),
-    nil.
+    case mnesia:transaction(F) of
+        {atomic, ok} -> {ok, nil};
+        {aborted, Reason} -> {error, list_to_binary(io_lib:format("~p", [Reason]))}
+    end.
 
 recover() ->
     F = fun() ->
