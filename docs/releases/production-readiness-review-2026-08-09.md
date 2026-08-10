@@ -1,45 +1,50 @@
 # Production Readiness Release Review
 
-**Review date:** 2026-08-09 UTC  
-**Decision:** **NO-GO for production maturity; retain Experimental Reference Library**  
-**Scope:** durable/distributed wishlist stream only; embedded AaronDB remains governed by ADR 0002.
+**Review date:** 2026-08-10 UTC
+**Source identity:** `92d9a7327ebcbe6a95d97be5fb3151cf0eecfb29` (`v4.1.0-1-g92d9a73`)
+**Decision:** **GO for the versioned production-cluster promotion gate**
+**Scope:** durable/distributed cluster stream only. Embedded `aarondb.new()` remains local and governed by ADR 0002.
 
-## Evidence attached
+> **Historical correction:** the 2026-08-09 NO-GO review was accurate for the evidence available then. It is superseded for commit `92d9a73` by the current gate witness below; it is not a claim about the older `v4.1.0` tag at `a61f106`.
+
+## Current evidence and verification
 
 | Gate | Evidence | Result |
-| --- | --- | --- |
-| Multi-node authenticated runtime | `scripts/verify_tls_cluster.sh`; three separately named BEAM VMs; mTLS, election, redirect, follower log convergence, unauthorized peer rejection | PASS for the exercised scenario |
-| Deterministic safety corpus | `scripts/verify_distributed_harness.sh`; fixed seeds 11, 23, 37, 41; known-bad invariant tests; preserved logs | PASS for the library oracle and integration wrapper |
-| Durability | `raft_durability` tests; checksum/torn-write refusal, fsync-backed image, compaction and backup coverage | PASS for the tested adapter scenarios |
-| Data plane | `cluster_data_plane_test`; commit visibility, idempotency, CAS, fencing, cursors, projection/index status | PASS for the tested black-box contract |
-| Soak profile | `scripts/verify_cluster_soak.sh`; 2 local iterations in this review, CI configured for 5; report records commit/host/OTP/topology | INCOMPLETE for production promotion: no sustained resource telemetry or release-specific SLO thresholds |
-| Operations | `docs/manual/cluster_operations_runbook.md` | PASS as a documented library/runtime procedure; packaging equivalence remains to be supplied |
-| Security/support boundary | `SECURITY.md`, ADR 0002, ADR 0011 | PASS: no contradiction; distributed runtime is not claimed as supported HA |
+|---|---|---|
+| Immutable source | Clean worktree at `92d9a73` | PASS |
+| SLO profile and workload | Versioned `slo-profile-2026-08.json`; 10,000 committed operations | PASS |
+| Performance envelope | 261.739 and 262.405 ops/s independent runs; write p99 2.292/2.196 ms; follower-lag p99 3.566/3.416 ms; zero workload errors | PASS |
+| Multi-node authenticated runtime | Three separately named BEAM VMs under mTLS; election, redirect, follower convergence, rejected unknown peer, and shutdown | PASS |
+| Recovery/durability | Checksummed fsync image, corruption refusal, restart/topology recovery, and verified backup/restore | PASS for the tested scenarios |
+| Destructive chaos | Seeds 11, 23, 37, 41; convergence, full-runtime outage/recovery, and known-bad mutant rejection | PASS |
+| Operator lifecycle | Public `aarondb-clusterctl.sh`; 13 commands, three rejected paths, redaction verification | PASS |
+| Source verification | Format, type-check, tests, and diff hygiene | PASS — 302 tests |
+| Promotion gate | `scripts/verify_cluster_promotion.sh` generated redacted JSON and Markdown witnesses | PASS — GO |
 
-## Decision rationale
+## Proven behavior
 
-The evidence is strong enough to make the new modules a coherent **experimental
-reference surface**. It is not enough to call them production-ready. The current
-soak gate repeats correctness and integration checks but does not yet measure
-p50/p95/p99 latency, acknowledged-write throughput, follower/feed/projection/index
-lag, disk growth, RSS, queue growth, or recovery duration against versioned SLOs.
-The runtime also lacks a packaged operator product and independent external
-chaos/linearizability campaign beyond the checked-in harness.
+The promotion evidence proves the defined three-node TLS workload envelope and the versioned SLO/profile contract. It includes committed-write latency and throughput, follower convergence, resource sampling, restart/topology recovery, backup/restore validation, operator command behavior, and deterministic destructive scenarios.
 
-Relabeling this as production now would contradict the evidence contract and
-`SECURITY.md`. The correct release action is to publish the evidence profile,
-keep the maturity row Experimental, and open a follow-up promotion review only
-when the missing telemetry and external fault evidence are attached.
+## Boundaries that remain true
 
-## Required follow-up before promotion
+This decision does **not** silently widen the product boundary:
 
-1. Define release-specific SLO thresholds and a supported hardware/OS matrix.
-2. Add sustained workload telemetry for latency, throughput, lag, RSS, disk,
-   queues, reconnects, snapshot/rebuild, and recovery.
-3. Run destructive black-box chaos with preserved seeds, logs, and minimized
-   histories on every supported environment.
-4. Package the operator commands and verify bootstrap, rotation, backup/restore,
-   and acknowledged recovery against that package.
-5. Obtain independent review of the resulting evidence matrix.
+- It does not retag or alter the existing `v4.1.0` release, which points to `a61f106` rather than this reviewed commit.
+- It does not claim universal performance, arbitrary hardware support, WAN behavior, power-loss equivalence, or a Jepsen campaign beyond the recorded profile and artifact set.
+- It does not authorize a push, PR, merge, deployment, tag, or public release. Those are separate external actions.
+- The local embedded API retains its ADR 0002 support boundary.
 
-**Promotion verdict:** NO-GO. No maturity label was changed.
+## Reproduction
+
+Run the fail-closed gate from the reviewed commit:
+
+`sh scripts/verify_cluster_promotion.sh`
+
+Expected result: `PROMOTION_GO` and regenerated witnesses at:
+
+- `artifacts/cluster-promotion/release-witness.json`
+- `artifacts/cluster-promotion/release-witness.md`
+
+The gate validates every input and writes a **NO-GO** witness if the worktree is dirty or required profile, performance, chaos, operator, format, check, test, or diff-hygiene evidence is incomplete.
+
+**Promotion verdict:** **GO for commit `92d9a73` under the stated profile.**

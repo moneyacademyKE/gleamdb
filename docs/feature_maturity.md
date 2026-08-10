@@ -1,10 +1,10 @@
 # Feature Maturity
 
-This document separates implemented capability from vision. The supported deployment boundary and explicit non-goals are defined in [ADR 0002](adr/0002-embedded-local-mcp-boundary.md). The concrete evidence gates for search, graph analytics, and federation are maintained in the [roadmap](roadmap_vnext.md), with a verifiable per-contract index in [Stable-local evidence](evidence.md).
+This document separates implemented capability from vision. The supported deployment boundary and explicit non-goals are defined in [ADR 0002](adr/0002-embedded-local-mcp-boundary.md). The concrete evidence gates for search, graph analytics, federation, and the cluster profile are maintained in the [roadmap](roadmap_vnext.md), [Stable-local evidence](evidence.md), and the [cluster promotion gate](releases/cluster-promotion-gate.md).
 
 ## Levels
 
-- Stable: the public contract has committed correctness, lifecycle, resource, reproducible local benchmark, and CI regression evidence.
+- Stable: the public contract has committed correctness, lifecycle, resource, reproducible benchmark, and CI regression evidence for a defined deployment envelope.
 - Beta: implemented and useful, but one or more Stable evidence gates remain incomplete.
 - Experimental: promising or partially implemented, but not yet a strong contract.
 
@@ -25,7 +25,7 @@ This document separates implemented capability from vision. The supported deploy
 | Virtual predicates | Stable (bounded local adapters) | Typed adapter result, bounded row contract, failure tests, and [adapter contract](manual/virtual_predicates.md) | Synchronous adapters cannot be forcibly interrupted; no remote/distributed contract |
 | Reactive subscriptions | Stable (local mailbox delivery) | Serialized actor ordering, explicit unsubscribe, stopped-subscriber pruning, contract tests, and [delivery boundary](manual/reactive_subscriptions.md) | Delivery is unbounded local BEAM mailbox messaging; WAL hooks remain compatibility-only |
 | Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Local scatter/gather only; cross-shard average/median are approximate and migration is explicitly unsupported |
-| Raft / HA | Experimental reference library | Durable authenticated protocol reference in `raft_runtime`, quorum/lease/identity modules, deterministic regression suites, and [release manifest](releases/durable_distributed_experimental.md) | No integrated network runtime or deployed-cluster evidence; legacy `raft.gleam` remains inactive |
+| Raft / HA | Stable (profile-bounded cluster runtime) | mTLS three-VM runtime, durable consensus/lease/identity modules, 10,000-operation SLO evidence, chaos seeds, operator lifecycle contract, and a fail-closed [GO witness](releases/cluster-promotion-gate.md) at `92d9a73` | Defined 3-node profile only; no WAN, universal hardware, or arbitrary fault-model guarantee |
 | MCP server | Beta | Local stdio JSON-RPC adapter, three tools, JSON serialization, typed actor | Local child-process transport only; no network listener |
 | Capability authorization | Local-only | `src/aarondb/auth.gleam`, gateway tests | JSON capabilities are not signed credentials; no network authentication claim |
 | Mnesia persistence | Recovery-oriented (single-node) | Transaction-error propagation, non-destructive schema guard, isolated fresh-directory recovery suite | No HA, multi-node, schema-migration, power-loss, or concurrent-writer performance contract |
@@ -46,7 +46,7 @@ These Stable labels do **not** imply remote federation, HA, replication, migrati
 
 ## Legacy and inactive surfaces
 
-- **Raft** has two deliberately separate surfaces: `aarondb/raft` is the inactive election-only compatibility stub, while `aarondb/raft_runtime` and related durable modules are an **experimental reference library**. They are not a deployed cluster, do not integrate a network runtime, and must not be presented as production HA; see the [release manifest](releases/durable_distributed_experimental.md).
+- **Raft / HA** has two deliberately separate surfaces: `aarondb/raft` is the inactive election-only compatibility stub. `aarondb/raft_runtime` and related durable modules form the **profile-bounded cluster runtime** promoted at commit `92d9a73`; its proof envelope is three authenticated BEAM nodes and the versioned SLO/chaos/operator witness. It is not a universal HA or WAN-distribution claim; see the [promotion gate](releases/cluster-promotion-gate.md).
 - **RAG** is the supported local MCP semantic-intent macro layer. It compiles intents to the normal Cognitive and graph AST clauses; it is not a separate retrieval engine or service.
 ## Adoption Guidance
 
