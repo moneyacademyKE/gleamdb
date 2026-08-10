@@ -12,7 +12,7 @@ Every pull request runs the following checks in [CI](../.github/workflows/ci.yml
 
 - `gleam format --check src test bench`
 - `gleam docs build`
-- `gleam test`
+- `gleam test` (including deterministic distributed-harness mutants)
 - `actionlint`
 - Vector/HNSW, BM25, graph, local-federation, and temporal/diff evidence
   harnesses
@@ -33,6 +33,11 @@ where their contracts require it.
 | [Reactive subscriptions](manual/reactive_subscriptions.md) | `test/aarondb/reactive_test.gleam`: initial/delta ordering, unsubscribe, stopped-subscriber cleanup | local mailbox boundary; no replay, acknowledgement, or bounded queue | contract tests run in `gleam test` |
 | [Cognitive explicit-fact solver](features/cognitive_memory.md) | `test/aarondb/cognitive_contract_test.gleam`: relevance defaults, numeric maximum, update/retract lifecycle | threshold semantics and local-only solver boundary | contract tests run in `gleam test` |
 | [Virtual predicates](manual/virtual_predicates.md) | virtual-predicate integration tests exercise ordered adapter rows | typed adapter failure/timeout, invalid limit, and overflow fail-closed behavior | contract tests run in `gleam test` |
+| [Mnesia single-node recovery](manual/mnesia_recovery.md) | `test/aarondb/history_test.gleam`: recovery and failing-storage no-mutation behavior | startup, schema mismatch, and aborted transaction errors are typed; incompatible tables are never reset | isolated suite: `ERL_FLAGS="-mnesia dir <temporary-directory>" gleam test` |
+| [Failure and trust boundaries](manual/failure_boundaries.md) | `test/aarondb/ergonomics_test.gleam`: timeout-aware actor management APIs | safe Erlang-term decoding, malformed data errors, and documented compatibility helpers | contract tests run in `gleam test` |
+| [Local MCP stdio](manual/mcp_stdio.md) | `test/aarondb/mcp_stdio_test.gleam`: request parsing, protocol errors, notifications, and supported lifecycle dispatch | local synchronous backpressure, notification suppression, EOF shutdown; no network transport or remote authentication | `sh scripts/mcp_stdio_conformance.sh`: real stdin/stdout/stderr child-process lifecycle harness, run by CI |
+| [Cluster operations and recovery](manual/cluster_operations_runbook.md) | operator bootstrap, status/diagnosis, backup/restore, rotation, alarms, and incident procedures | runbook is library/runtime contract; packaging must expose equivalent commands |
+
 
 ## Compatibility and unsupported surfaces
 

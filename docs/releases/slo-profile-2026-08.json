@@ -1,0 +1,55 @@
+{
+  "profile": "aarondb-cluster-reference-2026-08",
+  "version": 1,
+  "status": "experimental-reference",
+  "assumptions": {
+    "topology": "3 BEAM nodes, 1 leader and 2 followers",
+    "runtime": "OTP 29, Gleam 1.17",
+    "workload": "70% committed CAS writes, 20% linearizable reads, 5% feed pulls, 5% projection/index application",
+    "hardware": "Apple Silicon or Linux x86_64, 4 vCPU, 8 GiB RAM, local SSD",
+    "duration_seconds": 900,
+    "minimum_samples": 10000,
+    "percentiles": "nearest-rank over successful operations; failed operations are counted separately"
+  },
+  "freshness": {
+    "max_age_seconds": 86400
+  },
+  "thresholds": {
+    "correctness": {
+      "max_uncommitted_visibility": 0,
+      "max_duplicate_application": 0,
+      "max_stale_fence_acceptance": 0,
+      "max_split_brain_events": 0
+    },
+    "availability": {
+      "min_acknowledged_write_success_rate": 0.999,
+      "max_error_rate": 0.001
+    },
+    "latency_ms": {
+      "max_p95_write": 50,
+      "max_p99_write": 150,
+      "max_p95_read_index": 40,
+      "max_p99_read_index": 120,
+      "max_p99_feed_pull": 200
+    },
+    "throughput": {
+      "min_committed_writes_per_second": 100
+    },
+    "replication": {
+      "max_p99_follower_lag_ms": 500,
+      "max_p99_projection_lag_ms": 1000,
+      "max_p99_index_lag_ms": 1000
+    },
+    "recovery": {
+      "max_restart_recovery_seconds": 30,
+      "max_quorum_recovery_seconds": 60,
+      "max_restore_verification_seconds": 300
+    },
+    "resources": {
+      "max_rss_mb": 2048,
+      "max_cpu_percent": 300,
+      "max_disk_growth_mb": 4096,
+      "max_mailbox_depth": 10000
+    }
+  }
+}

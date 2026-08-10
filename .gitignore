@@ -1,3 +1,7 @@
+# Release and benchmark witnesses are generated locally; published evidence is
+# referenced by immutable hashes in the release witness rather than committed.
+artifacts/
+
 /aarondb
 # Gleam build artifacts
 build/

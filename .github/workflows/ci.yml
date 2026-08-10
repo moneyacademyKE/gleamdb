@@ -22,6 +22,19 @@ jobs:
       - run: gleam docs build
       - run: gleam test
 
+  distributed-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          gleam-version: "1.17.0"
+          otp-version: "27"
+          rebar3-version: "3"
+      # Gleam 1.17 runs the project test runner as one unit; this named gate
+      # includes distributed_harness_test and its known-bad mutant corpus.
+      - run: sh scripts/verify_distributed_harness.sh
+
   evidence:
     runs-on: ubuntu-latest
     steps:
@@ -36,7 +49,11 @@ jobs:
       - run: gleam run -m graph_benchmark
       - run: gleam run -m federation_benchmark
       - run: gleam run -m temporal_diff_benchmark
-
+      - run: AARONDB_SOAK_ITERATIONS=5 sh scripts/verify_cluster_soak.sh
+      - run: |
+          mnesia_dir=$(mktemp -d)
+          trap 'rm -rf "$mnesia_dir"' EXIT
+          ERL_FLAGS="-mnesia dir '\"$mnesia_dir\"'" gleam test
   workflow-lint:
     runs-on: ubuntu-latest
     steps:

@@ -84,6 +84,9 @@ pub type SpeculativeResult {
   SpeculativeResult(state: state.DbState, datoms: List(fact.Datom))
 }
 
+/// **Compatibility constructor.** This convenience API returns a `Db` directly
+/// and therefore cannot report actor startup failures. New integrations should
+/// call `start_link/2` and handle its `Result` instead.
 pub fn new() -> Db {
   new_with_adapter(None)
 }
@@ -577,6 +580,15 @@ pub fn register_function(
   transactor.register_function(db, name, func)
 }
 
+pub fn register_function_with_timeout(
+  db: Db,
+  name: String,
+  func: fact.DbFunction(state.DbState),
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  transactor.register_function_with_timeout(db, name, func, timeout_ms)
+}
+
 pub fn register_composite(db: Db, attrs: List(String)) -> Result(Nil, String) {
   transactor.register_composite(db, attrs)
 }
@@ -589,12 +601,29 @@ pub fn register_predicate(
   transactor.register_predicate(db, name, pred)
 }
 
+pub fn register_predicate_with_timeout(
+  db: Db,
+  name: String,
+  pred: fn(fact.Value) -> Bool,
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  transactor.register_predicate_with_timeout(db, name, pred, timeout_ms)
+}
+
 pub fn store_rule(db: Db, rule: ast.Rule) -> Result(Nil, String) {
   transactor.store_rule(db, rule)
 }
 
 pub fn set_config(db: Db, config: state.Config) -> Nil {
   transactor.set_config(db, config)
+}
+
+pub fn set_config_with_timeout(
+  db: Db,
+  config: state.Config,
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  transactor.set_config_with_timeout(db, config, timeout_ms)
 }
 
 /// Subscribe to local reactive query updates.

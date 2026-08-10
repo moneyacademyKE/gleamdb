@@ -221,6 +221,9 @@ pub fn get_state_with_timeout(
   }
 }
 
+/// **Compatibility read helper.** This function uses the default five-second
+/// deadline and cannot report a timeout. New integrations should call
+/// `get_state_with_timeout/2` and handle its `Result`.
 pub fn get_state(subj: process.Subject(Message)) -> state.DbState {
   let reply = process.new_subject()
   process.send(subj, GetState(reply))
@@ -250,15 +253,29 @@ pub fn set_schema_with_timeout(
   }
 }
 
+/// **Compatibility registration helper.** This function cannot surface an
+/// actor timeout. New integrations should use `register_function_with_timeout/4`.
 pub fn register_function(
   subj: process.Subject(Message),
   name: String,
   func: fact.DbFunction(state.DbState),
 ) -> Nil {
+  let _ = register_function_with_timeout(subj, name, func, 5000)
+  Nil
+}
+
+pub fn register_function_with_timeout(
+  subj: process.Subject(Message),
+  name: String,
+  func: fact.DbFunction(state.DbState),
+  timeout_ms: Int,
+) -> Result(Nil, String) {
   let reply = process.new_subject()
   process.send(subj, RegisterFunction(name, func, reply))
-  let assert Ok(Nil) = process.receive(reply, 5000)
-  Nil
+  case process.receive(reply, timeout_ms) {
+    Ok(Nil) -> Ok(Nil)
+    Error(_) -> Error("Timeout registering function")
+  }
 }
 
 pub fn register_composite(
@@ -273,15 +290,29 @@ pub fn register_composite(
   }
 }
 
+/// **Compatibility registration helper.** This function cannot surface an
+/// actor timeout. New integrations should use `register_predicate_with_timeout/4`.
 pub fn register_predicate(
   subj: process.Subject(Message),
   name: String,
   pred: fn(fact.Value) -> Bool,
 ) -> Nil {
+  let _ = register_predicate_with_timeout(subj, name, pred, 5000)
+  Nil
+}
+
+pub fn register_predicate_with_timeout(
+  subj: process.Subject(Message),
+  name: String,
+  pred: fn(fact.Value) -> Bool,
+  timeout_ms: Int,
+) -> Result(Nil, String) {
   let reply = process.new_subject()
   process.send(subj, RegisterPredicate(name, pred, reply))
-  let assert Ok(Nil) = process.receive(reply, 5000)
-  Nil
+  case process.receive(reply, timeout_ms) {
+    Ok(Nil) -> Ok(Nil)
+    Error(_) -> Error("Timeout registering predicate")
+  }
 }
 
 pub fn store_rule(
@@ -296,11 +327,24 @@ pub fn store_rule(
   }
 }
 
+/// **Compatibility configuration helper.** This function cannot surface an
+/// actor timeout. New integrations should use `set_config_with_timeout/3`.
 pub fn set_config(subj: process.Subject(Message), config: state.Config) -> Nil {
+  let _ = set_config_with_timeout(subj, config, 5000)
+  Nil
+}
+
+pub fn set_config_with_timeout(
+  subj: process.Subject(Message),
+  config: state.Config,
+  timeout_ms: Int,
+) -> Result(Nil, String) {
   let reply = process.new_subject()
   process.send(subj, SetConfig(config, reply))
-  let assert Ok(Nil) = process.receive(reply, 5000)
-  Nil
+  case process.receive(reply, timeout_ms) {
+    Ok(Nil) -> Ok(Nil)
+    Error(_) -> Error("Timeout setting configuration")
+  }
 }
 
 pub fn transact(

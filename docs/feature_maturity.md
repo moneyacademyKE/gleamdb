@@ -25,10 +25,10 @@ This document separates implemented capability from vision. The supported deploy
 | Virtual predicates | Stable (bounded local adapters) | Typed adapter result, bounded row contract, failure tests, and [adapter contract](manual/virtual_predicates.md) | Synchronous adapters cannot be forcibly interrupted; no remote/distributed contract |
 | Reactive subscriptions | Stable (local mailbox delivery) | Serialized actor ordering, explicit unsubscribe, stopped-subscriber pruning, contract tests, and [delivery boundary](manual/reactive_subscriptions.md) | Delivery is unbounded local BEAM mailbox messaging; WAL hooks remain compatibility-only |
 | Sharding | Beta | `src/aarondb/sharded.gleam`, tests | Local scatter/gather only; cross-shard average/median are approximate and migration is explicitly unsupported |
-| Raft / HA | Inactive stub | Pure election-only state machine in `src/aarondb/raft.gleam` | No log replication, transport, or runtime integration; explicitly outside the supported boundary |
+| Raft / HA | Experimental reference library | Durable authenticated protocol reference in `raft_runtime`, quorum/lease/identity modules, deterministic regression suites, and [release manifest](releases/durable_distributed_experimental.md) | No integrated network runtime or deployed-cluster evidence; legacy `raft.gleam` remains inactive |
 | MCP server | Beta | Local stdio JSON-RPC adapter, three tools, JSON serialization, typed actor | Local child-process transport only; no network listener |
 | Capability authorization | Local-only | `src/aarondb/auth.gleam`, gateway tests | JSON capabilities are not signed credentials; no network authentication claim |
-| Mnesia persistence | Recovery-oriented (single-node) | Transaction-error propagation, non-destructive schema guard, and recovery coverage | No HA, multi-node, schema-migration, power-loss, or concurrent-writer performance contract |
+| Mnesia persistence | Recovery-oriented (single-node) | Transaction-error propagation, non-destructive schema guard, isolated fresh-directory recovery suite | No HA, multi-node, schema-migration, power-loss, or concurrent-writer performance contract |
 | Cognitive memory layer | Stable (local explicit-fact solver) | One active `Cognitive` solver, explicit relevance lifecycle contract, and regression tests | No ranking, embedding similarity, adaptive learning, decay, external retrieval, or cross-node consistency |
 
 ## Supported local contracts
@@ -46,7 +46,7 @@ These Stable labels do **not** imply remote federation, HA, replication, migrati
 
 ## Legacy and inactive surfaces
 
-- **Raft** is an explicitly inactive, election-only state-machine stub. It has no runtime integration and must not be treated as a clustering, replication, or HA feature.
+- **Raft** has two deliberately separate surfaces: `aarondb/raft` is the inactive election-only compatibility stub, while `aarondb/raft_runtime` and related durable modules are an **experimental reference library**. They are not a deployed cluster, do not integrate a network runtime, and must not be presented as production HA; see the [release manifest](releases/durable_distributed_experimental.md).
 - **RAG** is the supported local MCP semantic-intent macro layer. It compiles intents to the normal Cognitive and graph AST clauses; it is not a separate retrieval engine or service.
 ## Adoption Guidance
 

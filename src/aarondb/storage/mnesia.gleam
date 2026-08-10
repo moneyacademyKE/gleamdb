@@ -8,9 +8,11 @@
 //// STATUS: Supported for one local BEAM node's recovery path only. `init_mnesia`
 //// and reads/writes return explicit errors, including startup, schema-mismatch,
 //// and aborted-transaction failures; they never reset an incompatible table.
-//// Concurrent initialization is safe: the second initializer re-checks the
-//// existing table schema. This adapter does not provide multi-node durability,
-//// HA, schema migration, crash-consistency testing across power loss, or a
+//// Test isolation: run the suite with a disposable Mnesia directory, e.g.
+//// `ERL_FLAGS="-mnesia dir <temporary-directory>" gleam test`. The adapter
+//// owns no schema migration or cleanup operation: existing data is never reset.
+//// Concurrent initialization re-checks the existing table schema. This adapter
+//// does not provide multi-node durability, HA, schema migration,
 //// concurrent-writer performance guarantee. See ADR 0002.
 
 import aarondb/fact.{type Datom}

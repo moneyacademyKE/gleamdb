@@ -1,4 +1,7 @@
-# GleamDB vs CozoDB: A Rich Hickey Analysis
+# Historical Comparison Notes: GleamDB vs CozoDB
+
+> **Status: historical comparison, not a current architecture or capability claim.** The distributed Erlang, Mnesia replication, hot-reload, scale, and maturity statements below predate the v4.1.0 embedded/local boundary and must not be read as supported behavior. Current claims are defined by [Feature Maturity](../feature_maturity.md) and [ADR 0002](../adr/0002-embedded-local-mcp-boundary.md).
+
 
 > "Simple is often mistakenly associated with easy."
 
