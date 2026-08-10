@@ -1,11 +1,11 @@
 # Production Readiness Release Review
 
 **Review date:** 2026-08-10 UTC
-**Source identity:** `92d9a7327ebcbe6a95d97be5fb3151cf0eecfb29` (`v4.1.0-1-g92d9a73`)
+**Source identity:** `65daf440b9e5120e36d969774c4d180bd1f3f0f9` (`v4.1.0-2-g65daf44`)
 **Decision:** **GO for the versioned production-cluster promotion gate**
 **Scope:** durable/distributed cluster stream only. Embedded `aarondb.new()` remains local and governed by ADR 0002.
 
-> **Historical correction:** the 2026-08-09 NO-GO review was accurate for the evidence available then. It is superseded for commit `92d9a73` by the current gate witness below; it is not a claim about the older `v4.1.0` tag at `a61f106`.
+> **Historical correction:** the 2026-08-09 NO-GO review was accurate for the evidence available then. The production-cluster implementation was introduced at `92d9a73`; its promotion evidence was revalidated without source changes at `65daf44`, which carries this maturity metadata. Neither statement applies to the older `v4.1.0` tag at `a61f106`.
 
 ## Current evidence and verification
 
