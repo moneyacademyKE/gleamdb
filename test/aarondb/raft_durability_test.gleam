@@ -3,9 +3,9 @@ import aarondb/raft_runtime as raft
 import gleam/option.{Some}
 import gleeunit/should
 
-const store_path = "/Users/moe/Desktop/gleamdb/build/raft-durability-test.store"
+const store_path = "build/raft-durability-test.store"
 
-const backup_path = "/Users/moe/Desktop/gleamdb/build/raft-durability-test.backup"
+const backup_path = "build/raft-durability-test.backup"
 
 fn persisted() -> raft.Persisted {
   raft.Persisted(
