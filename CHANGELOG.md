@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.2.0 - 2026-08-11
+
+A **certified embedded-core release**. AaronDB v4.2.0 adds a mechanically checked `embedded-core-v1` structural profile for local Datalog domain data and deterministic algorithms. The certification is intentionally narrow: it is not a distributed-system, HA, transport, storage, or MCP maturity promotion.
+
+### Added
+
+- An executable `embedded-core-v1` profile and pure-to-runtime import boundary checker. The verifier fails closed for unapproved imports, forbidden runtime imports, malformed profile metadata, generated/runtime artifacts, missing closure paths, formatting, type-check, docs, tests, and diff hygiene.
+- A pure transaction-domain transformation and characterization coverage for ordered datoms and unresolved lookups.
+- A deterministic exact vector-search oracle, validation boundary, and stable tie ordering for finite local corpora.
+- An explicit `DbState` ownership projection covering facts/indexes, runtime handles, extensions, and operations.
+- Pure continuation policy data for bounded retry, deterministic fallback selection, checkpoints, idempotent-effect authorization, and escalation evidence.
+- Explicit deadline-aware `register_composite_with_timeout` and `store_rule_with_timeout` APIs.
+
+### Changed
+
+- The transactor runtime interprets the transaction-domain outcome, leaving persistence and subscriber delivery at the runtime boundary.
+- Existing `register_composite` and `store_rule` calls remain compatibility wrappers with their historical 5-second timeout; new integrations should use the explicit timeout APIs when deadline control matters.
+- Sharding, Raft durability, cluster evidence harnesses, and related documentation remain present but explicitly experimental. They are not part of `embedded-core-v1` and this release does not promote them.
+
+### Explicit non-goals
+
+This release does **not** claim remote federation, replication, high availability, failover, transactional migration, quorum, coordinated writes, global snapshots, active Raft replication, network-facing MCP, signed network authentication, distributed performance, long-soak readiness, upgrade/rollback readiness, destructive-storage recovery readiness, independent-host readiness, or LAN/WAN fault tolerance.
+
+### Verification
+
+- `sh scripts/verify_embedded_core_v1.sh`: formatter, type check, docs, module boundary/profile fixtures, full tests, and diff hygiene.
+- `sh scripts/verify_release_metadata.sh`: package, changelog, README, workflow, and tag parity.
+
 ## 4.1.0 - 2026-08-08
 
 A **local embedded maturity release**. AaronDB promotes supported capabilities only within their explicitly documented local contracts, backed by committed correctness, lifecycle, failure, bounded-resource, benchmark, and CI evidence.

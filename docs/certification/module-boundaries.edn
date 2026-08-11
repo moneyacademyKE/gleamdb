@@ -1,0 +1,37 @@
+{:profile :embedded-core-v1
+ :layers
+ {:pure ["src/aarondb/fact.gleam"
+         "src/aarondb/shared/ast.gleam"
+         "src/aarondb/shared/columnar.gleam"
+         "src/aarondb/shared/optimizer.gleam"
+         "src/aarondb/q.gleam"
+         "src/aarondb/command.gleam"
+         "src/aarondb/raft_runtime.gleam"
+         "src/aarondb/vec_index.gleam"
+         "src/aarondb/vec_index/exact.gleam"
+         "src/aarondb/vec_index/validation.gleam"]
+  :runtime ["src/aarondb/transactor.gleam"
+            "src/aarondb/transactor/"
+            "src/aarondb/storage.gleam"
+            "src/aarondb/storage/"
+            "src/aarondb/cluster_runtime.gleam"
+            "src/aarondb/cluster_transport.gleam"
+            "src/aarondb/sharded.gleam"
+            "src/aarondb/mcp/"]}
+ :forbidden-import-prefixes
+ ["gleam/erlang/process"
+  "gleam/otp"
+  "aarondb/storage"
+  "aarondb/transactor"
+  "aarondb/cluster_"
+  "aarondb/distributed_"
+  "aarondb/mcp/"]
+ :approved-import-prefixes
+ ["aarondb/fact"
+  "aarondb/shared/"
+  "aarondb/q"
+  "aarondb/command"
+  "aarondb/raft_runtime"
+  "aarondb/vec_index/"
+  "aarondb/vector"
+  "gleam/"]}
