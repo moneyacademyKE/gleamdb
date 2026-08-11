@@ -1,0 +1,23 @@
+{
+  "profile": "long-soak-v1",
+  "version": 1,
+  "status": "evidence-required",
+  "assumptions": {
+    "topology": "Three independently addressable mTLS nodes, one node per host, with named hardware and clock discipline recorded in the evidence manifest",
+    "workload": "70% committed CAS writes, 20% ReadIndex, 5% feed pulls, 5% projection/index application",
+    "hardware_floor": "4 vCPU, 8 GiB RAM, SSD per node",
+    "minimum_duration_seconds": 86400,
+    "minimum_samples": 1000000,
+    "percentiles": "nearest-rank over successful operations; failed operations are counted separately"
+  },
+  "freshness": {"max_age_seconds": 604800},
+  "thresholds": {
+    "correctness": {"max_uncommitted_visibility": 0, "max_duplicate_application": 0, "max_stale_fence_acceptance": 0, "max_split_brain_events": 0},
+    "availability": {"min_acknowledged_write_success_rate": 0.999, "max_error_rate": 0.001},
+    "latency_ms": {"max_p95_write": 150, "max_p99_write": 300, "max_p95_read_index": 120, "max_p99_read_index": 250, "max_p99_feed_pull": 500},
+    "throughput": {"min_committed_writes_per_second": 100},
+    "replication": {"max_p99_follower_lag_ms": 1000, "max_p99_projection_lag_ms": 2000, "max_p99_index_lag_ms": 2000},
+    "recovery": {"max_restart_recovery_seconds": 60, "max_quorum_recovery_seconds": 120, "max_restore_verification_seconds": 300},
+    "resources": {"max_rss_mb": 2048, "max_cpu_percent": 300, "max_disk_growth_mb": 4096, "max_mailbox_depth": 10000}
+  }
+}

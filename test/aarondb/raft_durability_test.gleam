@@ -102,3 +102,35 @@ pub fn verified_backup_exports_exact_recoverable_image_test() {
   should.equal(image, "exported")
   clear()
 }
+
+pub fn interrupted_pre_rename_write_preserves_last_acknowledged_image_test() {
+  clear()
+  let store = durability.open(store_path)
+  let expected = persisted()
+  let assert Ok(Nil) = durability.save(store, expected, "acknowledged")
+  let assert Ok(Nil) =
+    durability.interrupt_before_rename_for_test(store_path, "torn-new-image")
+  let assert Ok(#(restored, image)) = durability.load(store)
+  should.equal(restored, expected)
+  should.equal(image, "acknowledged")
+  clear()
+}
+
+pub fn corrupt_primary_requires_verified_backup_and_explicit_operator_recovery_test() {
+  clear()
+  let store = durability.open(store_path)
+  let expected = persisted()
+  let assert Ok(Nil) = durability.save(store, expected, "recoverable")
+  let assert Ok(Nil) = durability.backup(store, backup_path)
+  let assert Ok(Nil) =
+    durability.overwrite_for_test(store_path, "corrupt-primary")
+  case durability.load(store) {
+    Error(durability.Corrupt(_)) -> Nil
+    _ -> should.fail()
+  }
+  let assert Ok(#(restored, image)) =
+    durability.load(durability.open(backup_path))
+  should.equal(restored, expected)
+  should.equal(image, "recoverable")
+  clear()
+}

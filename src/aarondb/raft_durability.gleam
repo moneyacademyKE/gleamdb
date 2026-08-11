@@ -75,3 +75,12 @@ pub fn remove_for_test(path: String) -> Result(Nil, String)
 
 @external(erlang, "aarondb_raft_durability_ffi", "overwrite_for_test")
 pub fn overwrite_for_test(path: String, bytes: String) -> Result(Nil, String)
+
+/// Test-only fault injection: writes and syncs a partial sibling image then
+/// aborts before rename. The previously acknowledged recovery image must remain
+/// the only readable state.
+@external(erlang, "aarondb_raft_durability_ffi", "interrupt_before_rename_for_test")
+pub fn interrupt_before_rename_for_test(
+  path: String,
+  partial_bytes: String,
+) -> Result(Nil, String)

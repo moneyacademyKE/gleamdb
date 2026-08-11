@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "profile": "independent-host-lan-v1",
+  "cluster": "aarondb-independent-host-lan",
+  "controller": {
+    "host": "controller.example.net",
+    "ssh_user": "aarondb"
+  },
+  "nodes": [
+    {
+      "id": "a",
+      "host": "node-a.example.net",
+      "ssh_user": "aarondb",
+      "ssh_port": 22,
+      "distribution_name": "aarondb_a",
+      "certificate_fingerprint": "sha256:REPLACE_WITH_NODE_A_CERTIFICATE_FINGERPRINT",
+      "network_interface": "REPLACE_WITH_NODE_A_NETWORK_INTERFACE",
+      "data_dir": "/var/lib/aarondb"
+    },
+    {
+      "id": "b",
+      "host": "node-b.example.net",
+      "ssh_user": "aarondb",
+      "ssh_port": 22,
+      "distribution_name": "aarondb_b",
+      "certificate_fingerprint": "sha256:REPLACE_WITH_NODE_B_CERTIFICATE_FINGERPRINT",
+      "network_interface": "REPLACE_WITH_NODE_B_NETWORK_INTERFACE",
+      "data_dir": "/var/lib/aarondb"
+    },
+    {
+      "id": "c",
+      "host": "node-c.example.net",
+      "ssh_user": "aarondb",
+      "ssh_port": 22,
+      "distribution_name": "aarondb_c",
+      "certificate_fingerprint": "sha256:REPLACE_WITH_NODE_C_CERTIFICATE_FINGERPRINT",
+      "network_interface": "REPLACE_WITH_NODE_C_NETWORK_INTERFACE",
+      "data_dir": "/var/lib/aarondb"
+    }
+  ],
+  "tls": {
+    "ca_fingerprint": "sha256:REPLACE_WITH_CLUSTER_CA_FINGERPRINT",
+    "distribution": "inet_tls",
+    "verify_peer": true,
+    "fail_if_no_peer_cert": true
+  }
+}

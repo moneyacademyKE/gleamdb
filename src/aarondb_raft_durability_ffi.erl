@@ -1,5 +1,8 @@
 -module(aarondb_raft_durability_ffi).
--export([save/3, load/1, backup/2, remove/1, overwrite_for_test/2]).
+-export([
+    save/3, load/1, backup/2, remove/1, overwrite_for_test/2,
+    interrupt_before_rename_for_test/2
+]).
 
 %% The binary includes a magic/version envelope and a SHA-256 over the exact
 %% Erlang external-term payload. We write a sibling temporary file, fsync it,
@@ -58,6 +61,29 @@ overwrite_for_test(Path, Bytes) when is_binary(Path), is_binary(Bytes) ->
         {error, Reason} -> {error, format_error(Reason)}
     end;
 overwrite_for_test(_, _) -> {error, <<"invalid durability overwrite arguments">>}.
+
+%% Models process death after a synced temporary write but before atomic rename.
+%% It deliberately leaves the acknowledged primary untouched; callers must
+%% recover the old complete image, not observe the staged partial bytes.
+interrupt_before_rename_for_test(Path, PartialBytes)
+  when is_binary(Path), is_binary(PartialBytes) ->
+    Temp = <<Path/binary, ".tmp">>,
+    case file:write_file(Temp, PartialBytes, [binary, raw]) of
+        ok ->
+            case file:open(Temp, [read, raw, binary]) of
+                {ok, Device} ->
+                    Sync = file:sync(Device),
+                    _ = file:close(Device),
+                    case Sync of
+                        ok -> {ok, nil};
+                        {error, Reason} -> {error, format_error(Reason)}
+                    end;
+                {error, Reason} -> {error, format_error(Reason)}
+            end;
+        {error, Reason} -> {error, format_error(Reason)}
+    end;
+interrupt_before_rename_for_test(_, _) ->
+    {error, <<"invalid interrupted durability write arguments">>}.
 
 atomic_write(Path, Bytes) ->
     Temp = <<Path/binary, ".tmp">>,
