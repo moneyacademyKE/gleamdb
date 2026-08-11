@@ -1,6 +1,7 @@
 import aarondb
 import aarondb/fact
 import aarondb/q
+import aarondb/shared/ast
 import aarondb/shared/state
 import aarondb/transactor
 import gleam/erlang/process
@@ -74,6 +75,21 @@ pub fn timeout_aware_management_apis_report_dead_actor_test() {
   |> should.equal(Error("Timeout registering predicate"))
   transactor.set_config_with_timeout(subject, config, 1)
   |> should.equal(Error("Timeout setting configuration"))
+}
+
+pub fn timeout_aware_composite_and_rule_apis_report_dead_actor_test() {
+  let subject = process.new_subject()
+  let rule =
+    ast.Rule(#(ast.Var("e"), "person/name", ast.Var("name")), [
+      ast.Positive(#(ast.Var("e"), "person/name", ast.Var("name"))),
+    ])
+
+  transactor.register_composite_with_timeout(subject, ["person/email"], 1)
+  |> should.equal(Error("Timeout registering composite"))
+  transactor.store_rule_with_timeout(subject, rule, 1)
+  |> should.equal(Error("Timeout storing rule"))
+  transactor.get_state_with_timeout(subject, 0)
+  |> should.equal(Error("Timeout getting database state"))
 }
 
 fn no_op(

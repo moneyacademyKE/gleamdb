@@ -2,8 +2,11 @@ import aarondb/fact
 import aarondb/index
 import aarondb/index/art
 import aarondb/reactive
+import aarondb/shared/ownership
+import aarondb/shared/ownership_test_support
 import aarondb/shared/state as shared_state
 import aarondb/storage
+import aarondb/transactor/domain
 import aarondb/transactor/lifecycle
 import aarondb/transactor/schema
 import aarondb/transactor/validation
@@ -12,6 +15,59 @@ import gleam/dict
 import gleam/list
 import gleam/option.{None, Some}
 import gleeunit/should
+
+pub fn ownership_projection_is_complete_and_absent_extensions_are_explicit_test() {
+  let state = ownership_test_support.empty(storage.ephemeral(), False, None)
+  let view = ownership.view(state)
+
+  view.facts.latest_tx |> should.equal(0)
+  index.get_all_datoms(view.facts.eavt) |> should.equal([])
+  ownership_test_support.has_no_optional_extensions(state) |> should.equal(True)
+}
+
+pub fn ownership_projection_preserves_transaction_and_index_coherence_test() {
+  let state = ownership_test_support.empty(storage.ephemeral(), False, None)
+  let facts = [#(fact.Uid(fact.EntityId(42)), "person/name", fact.Str("Rich"))]
+
+  let assert Ok(domain.Outcome(next_state, _datoms)) =
+    domain.apply(state, domain.Transaction(facts, None, fact.Assert))
+  let view = ownership.view(next_state)
+
+  view.facts.latest_tx |> should.equal(1)
+  list.length(index.get_all_datoms(view.facts.eavt)) |> should.equal(1)
+  list.length(index.get_all_datoms_aevt(view.facts.aevt)) |> should.equal(1)
+  list.length(index.get_all_datoms_avet(view.facts.avet)) |> should.equal(1)
+}
+
+pub fn domain_apply_preserves_fact_order_and_declares_datoms_test() {
+  let state = base_state()
+  let facts = [
+    #(fact.Uid(fact.EntityId(7)), "person/name", fact.Str("Rich")),
+    #(fact.Uid(fact.EntityId(7)), "person/role", fact.Str("programmer")),
+  ]
+
+  let assert Ok(domain.Outcome(next_state, datoms)) =
+    domain.apply(state, domain.Transaction(facts, None, fact.Assert))
+
+  next_state.latest_tx |> should.equal(1)
+  list.map(datoms, fn(d) { d.attribute })
+  |> should.equal(["person/name", "person/role"])
+  list.map(datoms, fn(d) { d.tx_index }) |> should.equal([0, 1])
+}
+
+pub fn domain_apply_rejects_unresolved_lookup_without_effects_test() {
+  let state = base_state()
+  let facts = [
+    #(
+      fact.Lookup(#("person/email", fact.Str("missing@example.com"))),
+      "person/name",
+      fact.Str("Nope"),
+    ),
+  ]
+
+  domain.apply(state, domain.Transaction(facts, None, fact.Assert))
+  |> should.equal(Error("Lookup failed for person/email"))
+}
 
 pub fn schema_validate_unique_test() {
   let state =

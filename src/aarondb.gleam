@@ -10,6 +10,7 @@ import aarondb/shared/query_types
 import aarondb/shared/state
 import aarondb/storage.{type StorageAdapter}
 import aarondb/transactor
+import aarondb/transactor/domain
 import gleam/erlang/process.{type Subject}
 import gleam/int
 import gleam/list
@@ -218,7 +219,7 @@ pub fn with_facts(
   state: DbState,
   facts: List(Fact),
 ) -> Result(SpeculativeResult, String) {
-  transactor.compute_next_state(state, facts, None, fact.Assert)
+  domain.compute_next_state(state, facts, None, fact.Assert)
   |> result.map(fn(res) { SpeculativeResult(state: res.0, datoms: res.1) })
 }
 
@@ -593,6 +594,16 @@ pub fn register_composite(db: Db, attrs: List(String)) -> Result(Nil, String) {
   transactor.register_composite(db, attrs)
 }
 
+pub fn register_composite_with_timeout(
+  db: Db,
+  attrs: List(String),
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  transactor.register_composite_with_timeout(db, attrs, timeout_ms)
+}
+
+/// **Compatibility registration helper.** This function cannot surface an
+/// actor timeout. New integrations should use `register_predicate_with_timeout/4`.
 pub fn register_predicate(
   db: Db,
   name: String,
@@ -612,6 +623,14 @@ pub fn register_predicate_with_timeout(
 
 pub fn store_rule(db: Db, rule: ast.Rule) -> Result(Nil, String) {
   transactor.store_rule(db, rule)
+}
+
+pub fn store_rule_with_timeout(
+  db: Db,
+  rule: ast.Rule,
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  transactor.store_rule_with_timeout(db, rule, timeout_ms)
 }
 
 pub fn set_config(db: Db, config: state.Config) -> Nil {

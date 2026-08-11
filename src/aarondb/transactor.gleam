@@ -9,20 +9,17 @@ import aarondb/shared/ast
 import aarondb/shared/state
 import aarondb/storage
 import aarondb/storage/mnesia
-import aarondb/transactor/apply
+import aarondb/transactor/domain
 import aarondb/transactor/lifecycle
 import aarondb/transactor/messages
 import aarondb/transactor/runtime
 import aarondb/transactor/schema
-import aarondb/transactor/validation
 import aarondb/vec_index
 import gleam/dict
 import gleam/erlang/process
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
-import gleam/result
-import gleam/string
 
 pub type Message {
   Transact(
@@ -209,15 +206,22 @@ pub fn log_query(
   Nil
 }
 
+/// Read the current state before an explicit caller-supplied deadline.
+/// A non-positive deadline fails closed rather than hiding an invalid request.
 pub fn get_state_with_timeout(
   subj: process.Subject(Message),
   timeout_ms: Int,
 ) -> Result(state.DbState, String) {
-  let reply = process.new_subject()
-  process.send(subj, GetState(reply))
-  case process.receive(reply, timeout_ms) {
-    Ok(state) -> Ok(state)
-    Error(_) -> Error("Timeout getting database state")
+  case timeout_ms > 0 {
+    False -> Error("Timeout getting database state")
+    True -> {
+      let reply = process.new_subject()
+      process.send(subj, GetState(reply))
+      case process.receive(reply, timeout_ms) {
+        Ok(current_state) -> Ok(current_state)
+        Error(_) -> Error("Timeout getting database state")
+      }
+    }
   }
 }
 
@@ -282,16 +286,27 @@ pub fn register_composite(
   subj: process.Subject(Message),
   attrs: List(String),
 ) -> Result(Nil, String) {
-  let reply = process.new_subject()
-  process.send(subj, RegisterComposite(attrs, reply))
-  case process.receive(reply, 5000) {
-    Ok(res) -> res
-    Error(_) -> Error("Timeout registering composite")
+  register_composite_with_timeout(subj, attrs, 5000)
+}
+
+pub fn register_composite_with_timeout(
+  subj: process.Subject(Message),
+  attrs: List(String),
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  case timeout_ms > 0 {
+    False -> Error("Timeout registering composite")
+    True -> {
+      let reply = process.new_subject()
+      process.send(subj, RegisterComposite(attrs, reply))
+      case process.receive(reply, timeout_ms) {
+        Ok(res) -> res
+        Error(_) -> Error("Timeout registering composite")
+      }
+    }
   }
 }
 
-/// **Compatibility registration helper.** This function cannot surface an
-/// actor timeout. New integrations should use `register_predicate_with_timeout/4`.
 pub fn register_predicate(
   subj: process.Subject(Message),
   name: String,
@@ -319,11 +334,24 @@ pub fn store_rule(
   subj: process.Subject(Message),
   rule: ast.Rule,
 ) -> Result(Nil, String) {
-  let reply = process.new_subject()
-  process.send(subj, StoreRule(rule, reply))
-  case process.receive(reply, 5000) {
-    Ok(res) -> res
-    Error(_) -> Error("Timeout storing rule")
+  store_rule_with_timeout(subj, rule, 5000)
+}
+
+pub fn store_rule_with_timeout(
+  subj: process.Subject(Message),
+  rule: ast.Rule,
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  case timeout_ms > 0 {
+    False -> Error("Timeout storing rule")
+    True -> {
+      let reply = process.new_subject()
+      process.send(subj, StoreRule(rule, reply))
+      case process.receive(reply, timeout_ms) {
+        Ok(res) -> res
+        Error(_) -> Error("Timeout storing rule")
+      }
+    }
   }
 }
 
@@ -385,89 +413,7 @@ pub fn compute_next_state(
   valid_time: Option(Int),
   op: fact.Operation,
 ) -> Result(#(state.DbState, List(fact.Datom)), String) {
-  let tx_id = state.latest_tx + 1
-  let vt = option.unwrap(valid_time, tx_id)
-
-  // 1. Resolve transaction functions
-  let resolved_facts =
-    apply.resolve_transaction_functions(state, tx_id, vt, facts)
-
-  // 2. Generate datoms
-  let datoms_res =
-    list.fold_until(resolved_facts, Ok([]), fn(acc_res, f) {
-      let assert Ok(acc) = acc_res
-      let eid_res = case f.0 {
-        fact.Uid(id) -> Ok(id)
-        fact.Lookup(lu) -> {
-          let #(a, v) = lu
-          case a == "db/fn" {
-            True ->
-              Error("Unresolved transaction function: " <> string.inspect(v))
-            False -> {
-              index.get_entity_by_av(state.avet, a, v)
-              |> result.replace_error("Lookup failed for " <> a)
-            }
-          }
-        }
-      }
-
-      case eid_res {
-        Ok(eid) -> {
-          let d =
-            fact.Datom(
-              entity: eid,
-              attribute: f.1,
-              value: f.2,
-              tx: tx_id,
-              tx_index: list.length(acc),
-              valid_time: vt,
-              operation: op,
-            )
-          list.Continue(Ok([d, ..acc]))
-        }
-        Error(e) -> list.Stop(Error(e))
-      }
-    })
-
-  case datoms_res {
-    Ok(datoms) -> {
-      // 3. APPLY TO STATE AND GENERATE SIDE-EFFECTS
-      // We must reverse because they were prepended
-      let datoms = list.reverse(datoms)
-
-      let #(final_state, all_datoms, _) =
-        list.fold(datoms, #(state, [], 0), fn(acc, d) {
-          let #(curr_state, collected, next_idx) = acc
-          let #(new_state, side_effects, updated_idx) =
-            apply.apply_datom(
-              curr_state,
-              fact.Datom(..d, tx_index: next_idx),
-              next_idx,
-            )
-          #(new_state, list.append(side_effects, collected), updated_idx)
-        })
-
-      let all_datoms = list.reverse(all_datoms)
-
-      // 4. APPLY VALIDATIONS
-      let validate_res =
-        list.fold_until(all_datoms, Ok(Nil), fn(_, d) {
-          // Use INITIAL state for validation, but include IN-FLIGHT datoms
-          case validation.validate_datom(state, all_datoms, d) {
-            Ok(_) -> list.Continue(Ok(Nil))
-            Error(e) -> list.Stop(Error(e))
-          }
-        })
-
-      case validate_res {
-        Ok(_) -> {
-          Ok(#(state.DbState(..final_state, latest_tx: tx_id), all_datoms))
-        }
-        Error(e) -> Error(e)
-      }
-    }
-    Error(e) -> Error(e)
-  }
+  domain.compute_next_state(state, facts, valid_time, op)
 }
 
 fn handle_message(

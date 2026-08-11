@@ -16,7 +16,8 @@ pub fn transaction_function_inc_test() {
     case args {
       [fact.Ref(eid), fact.Str(attr)] -> {
         let existing =
-          index.get_datoms_by_entity_attr(state.eavt, eid, attr) |> list.first()
+          index.get_datoms_by_entity_attr(state.eavt, eid, attr)
+          |> list.first()
         let current_val = case existing {
           Ok(d) -> {
             case d.value {
