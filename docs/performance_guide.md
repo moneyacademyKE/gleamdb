@@ -1,149 +1,48 @@
-# Performance Sovereignty: Silicon Saturation ⚡️
+# Performance guide
 
-GleamDB leverages Erlang Term Storage (ETS) to achieve lock-free, concurrent read performance and O(1) attribute lookups.
+> **Scope:** local, embedded AaronDB in one BEAM runtime. This document describes implementation characteristics and measurement guidance; it does **not** promise a universal latency, throughput, memory, or asymptotic-performance SLA. Reproducible evidence for supported local contracts lives in [Stable-local evidence](evidence.md).
 
-## The Silicon Saturation Principle
+## Local execution model
 
-Traditional databases often bottleneck on the coordination between writers and readers. GleamDB saturates the CPU by moving core indices out of actor state and into ETS.
+- ETS indexes support concurrent local reads; database writes remain serialized through the transactor actor.
+- Direct attribute lookups and indexed operations have different costs based on data shape, query plan, and index state. Measure representative workloads rather than relying on Big-O marketing claims.
+- HNSW vector search is approximate. Its committed local recall/churn evidence and benchmark method are documented in [Vector search](manual/vector_search.md).
+- Local sharding is Beta scatter/gather inside one BEAM runtime. It is not remote clustering, replication, or high availability; see the [Local Sharding Guide](distributed_guide.md).
+- Mnesia is a recovery-oriented, single-node adapter. It has no supported HA, multi-node, power-loss, or concurrent-writer performance contract.
+- Virtual predicates run synchronously in the query actor. An adapter that performs remote I/O makes that query branch wait; remote adapters are outside the supported local contract.
 
-- **Concurrent Reads**: Multiple query processes can scan `EAVT`, `AEVT`, and `AVET` indices simultaneously without sending messages to the Transactor actor.
-- **Lock-Free Lookups**: ETS `read_concurrency` ensures that readers do not block each other, even under heavy load.
+## Measurement discipline
 
-## Benchmarks & Scaling
+Run the committed evidence harnesses before making local performance decisions:
 
-- **Read Latency**: O(1) for direct attribute lookups via Silicon Saturation (ETS).
-- **Ingestion Throughput**: 
-    - **Durable Mnesia**: ~2,500 events/sec (single shard).
-    - **Native Sharding**: >10,000 durable events/sec (8 shards on M3 Max).
-    - **SQLite WAL**: ~120,000 datoms/sec.
-- **Query Optimizations**:
-    - **Similarity Search**: O(log N) via HNSW graph index (vs O(N) brute-force AVET scan).
-    - **Temporal Range**: **~59x speedup** for periods/since queries using native `sharded.since` implementation (Phase 4).
-- **Join Performance**: Datalog joins leverage ETS `duplicate_bag` matching, providing near-native BEAM performance for complex queries.
-- **Memory Efficiency**: GleamDB uses optimized tuple structures to minimize memory overhead while maintaining searchability.
+- `gleam run -m vector_benchmark`
+- `gleam run -m bm25_benchmark`
+- `gleam run -m graph_benchmark`
+- `gleam run -m federation_benchmark`
+- `gleam run -m temporal_diff_benchmark`
+
+Record the machine, runtime, corpus or fixture shape, and configuration alongside each result. Do not extrapolate a local fixture result to a production or distributed-service promise.
 
 ## Configuration
 
-To enable Silicon Saturation (ETS), simply start your database with a name:
+Named databases enable ETS-backed indexes automatically:
 
 ```gleam
-// Enables ETS indices automatically
-let db = gleamdb.start_named("fast_db", storage.ephemeral())
+let db = aarondb.start_named("fast_db", storage.ephemeral())
 ```
 
-When `ets_name` is present in the `DbState`, the Datalog engine (`engine.gleam`) automatically switches from `Dict` lookups to direct ETS scans.
+When `ets_name` is present in `DbState`, the engine can use ETS-backed index lookups. Query result size, history depth, graph budgets, and vector configuration remain caller-controlled inputs; use each feature’s documented bounded API when available.
 
-## HNSW Vector Index
+## Feature-specific contracts
 
-For similarity queries, GleamDB maintains a **Hierarchical Navigable Small-World (HNSW)** graph index alongside the standard EAVT/AEVT/AVET indices:
+- [Vector search](manual/vector_search.md) — local approximate cosine search, validation, lifecycle, and evidence.
+- [BM25 search](manual/bm25_search.md) — local caller-owned analyzer and ranking primitive.
+- [Graph queries](manual/graph_queries.md) — directed local analytics; bounded APIs are preferred for new callers.
+- [Temporal querying and diff](manual/temporal_diff.md) — local bounded history scans and diffs.
+- [Local federation](manual/local_federation.md) — named local actor reads, deterministic ordering, and fail-fast errors.
+- [Reactive subscriptions](manual/reactive_subscriptions.md) — local mailbox delivery; consumers own backpressure.
+- [Mnesia recovery](manual/mnesia_recovery.md) — single-node recovery-only storage boundary.
 
-- **Auto-Indexing**: Vec values are automatically added to the HNSW graph on assertion and removed on retraction.
-- **Hierarchical Search**: Probabilistic skip-list structure enables $O(\log N)$ search complexity.
-- **Unit-Vector Optimization**: Normalizing vectors to unit length at ingestion allows the search engine to use pure **Dot Product** for scoring, significantly reducing CPU cycles.
-- **Graph-Accelerated**: `solve_similarity` uses the HNSW graph for unbound variables, falling back to AVET scan if the index is empty.
+## Retention
 
-```gleam
-// Similarity search uses NSW graph automatically
-let query = [Similarity(Var("market"), [0.1, 0.2, 0.3], 0.9)]
-let results = gleamdb.query(db, query)
-```
-
-## Graph Algorithm Efficiency
-
-Native algorithmic predicates are optimized for the BEAM's shared-nothing architecture:
-
-- **Shortest Path (BFS)**: Operates in O(V + E) by leveraging the `AEVT` index for neighbors.
-- **PageRank Power Method**: Uniquely optimized by pre-computing the graph structure into adjacency maps before the iterative phase. This eliminates index lookups during the heavy numeric crunching, ensuring maximum throughput.
-
-## Federation Overhead
-
-When using `Virtual` predicates, performance is dictated by the **Adapter Protocol**:
-- **Local Resolution**: Virtual predicates are resolved in the query actor process.
-- **Latency Sensitivity**: If an adapter calls a remote API, it will latency-spike that specific query branch.
-- **Strategy**: Use local CSV/JSON files or in-memory caches within the adapter for real-time join performance.
-
-## Advanced Patterns
-
-### Parallel Querying
-
-Since reads are lock-free, you can safely spawn multiple actors to perform parallel analytics:
-
-```gleam
-list.each(0..10, fn(_) {
-  process.start(fn() {
-    let results = engine.run(db, my_query, [], None)
-    // Process results in parallel
-  })
-})
-```
-
-While reads are concurrent, writes remain serialized through the leader's Transactor. For maximum throughput, combine multiple facts into a single `transact` call to leverage batch persistence and replication.
-
-
-### Parallel Query Execution (v1.9.0)
-
-GleamDB automatically parallelizes any query branch that exceeds **500 items** in intermediate context size.
-
-- **Mechanism**: Spawns linked `gleam/erlang/process` actors for chunks of the context.
-- **Speedup**: Linear scaling for large scans or complex joins.
-- **Threshold**: Hardcoded to 500 to balance spawn overhead vs parallelism gain.
-
-## Memory Management: Fact Retention
-
-High-frequency ingestion saturates memory quickly if history is infinite. Use **Retention Policies** to bound the growth:
-
-```gleam
-let config = fact.AttributeConfig(
-  unique: False, 
-  component: False, 
-  retention: fact.LatestOnly
-)
-gleamdb.set_schema(db, "sensor/value", config)
-```
-
-Attributes with `LatestOnly` will prune their history during every transaction, ensuring O(1) memory for ephemeral streams while preserving permanent facts elsewhere.
-
-### Parallel Recovery Velocity
-When dealing with millions of historical datoms, serial recovery is a bottleneck. GleamDB's sharding implementation uses **Parallel Initialization** to saturate the CPU during boot.
-
-- **Threshold**: Systems with >100k historical records should increase `process.receive` timeouts to 600s during startup.
-- **Pattern**: Shards recover independently, then signal the leader of readiness.
-
-### High-Frequency Tickers (The Gswarm Pattern)
-In production scenarios like Gswarm (1000+ ticks/sec), combining `LatestOnly` with Mnesia's `persist_batch` is critical. This decouples the "current state" (held in lock-free ETS) from the "durability layer," allowing the system to maintain sub-millisecond responsiveness even under extreme write pressure.
-
-### Real-Time Observability (Sovereign Console)
-The Sovereign Console (Phase 8) utilizes low-overhead JSON APIs to stream actor state directly to a D3.js frontend. By calculating the topology only on-request and serving it from the existing HTTP process, the console provides high-fidelity observability without compromising the engine's core ingestion velocity.
-
-### Distributed Aggregate coordination (Phase 15)
-When querying across shards, GleamDB performs a **Coordinate Reduction** pass in the coordinator process. 
-- **Efficiency**: For `SUM` and `COUNT`, individual shards return their local results, and the coordinator performs a secondary `SUM`. This avoids pulling raw data across the network.
-- **Latency**: The coordination overhead is $O(S \times A)$, where $S$ is the number of shards and $A$ is the number of aggregate variables. This is significantly faster than a flat scatter-gather for large datasets.
-
-### Reactive WAL Streaming (Phase 15)
-The `subscribe_wal` API provides low-latency access to the database's write-ahead log.
-- **Push vs. Pull**: By pushing datoms directly from the Transactor to subscribers, system latency for signal detection is reduced by avoiding repeated Datalog polling.
-- **Impact**: Broadcasting to subscribers is a sub-millisecond operation per subscriber, as it leverages Erlang's efficient message passing.
-
-### Predictive Prefetching (Phase 59)
-GleamDB tracks recent query patterns in a `query_history` ring buffer (max 100 entries). On each `Tick` lifecycle event, `prefetch.analyze_history` identifies attributes queried ≥2 times and proactively loads them into ETS caches.
-
-- **Enable**: Set `config.prefetch_enabled = True`.
-- **Overhead**: Negligible — history logging is async via `LogQuery` message.
-- **Benefit**: Eliminates cold-start latency for repeated query patterns.
-
-### Zero-Copy Serialization (Phase 59)
-When `engine.pull` encounters more datoms than `config.zero_copy_threshold`, it bypasses standard struct mapping and returns a raw `PullRawBinary(BitArray)` using Erlang's `term_to_binary/1`.
-
-- **Configure**: Set `config.zero_copy_threshold` (default: 10,000).
-- **Deserialize**: Use `ets_index.deserialize_term(bin)` to recover `dynamic.Dynamic`.
-- **Benefit**: Eliminates GC pressure for large analytical payloads.
-
-### Graph Traversal Performance (Phase 60)
-The `gleamdb.traverse` API resolves multi-hop relationships using batched ETS lookups:
-
-- **Out steps**: O(D) per entity via EAVT lookup + attribute filter.
-- **In steps**: O(A) via AEVT reverse lookup.
-- **Depth guard**: Expressions exceeding `max_depth` are rejected before execution.
-- **Deduplication**: `list.unique()` applied per hop to prevent combinatorial explosion.
-
+Use retention policies to bound data retained for attributes with ephemeral workloads. Retention is a data-model decision: it can discard historical visibility for that attribute, so it must be chosen deliberately rather than treated as a performance toggle.

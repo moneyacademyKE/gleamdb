@@ -20,7 +20,54 @@ jobs:
           rebar3-version: "3"
       - run: gleam format --check src test bench
       - run: gleam docs build
-      - run: gleam test
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam test
+
+  embedded-core-boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          gleam-version: "1.17.0"
+          otp-version: "27"
+          rebar3-version: "3"
+      - uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          bb: 1.12.218
+      - run: sh scripts/with_ephemeral_mnesia.sh sh scripts/verify_embedded_core_v1.sh
+
+  release-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          gleam-version: "1.17.0"
+          otp-version: "27"
+          rebar3-version: "3"
+      - run: sh scripts/verify_release_metadata.sh
+      # Broader stability is intentionally not a v4.2 release requirement.
+      # If a branch opts into AARONDB_RELEASE_SCOPE=broader-stability, the
+      # profile-aware verifier must be green or the claim is rejected.
+      - run: |
+          if [ "${AARONDB_RELEASE_SCOPE:-embedded-core-v1}" = "broader-stability" ]; then
+            sh scripts/verify_broader_stability.sh
+          else
+            echo "RELEASE_SCOPE_OK scope=embedded-core-v1 broader-stability=experimental"
+          fi
+
+  distributed-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          gleam-version: "1.17.0"
+          otp-version: "27"
+          rebar3-version: "3"
+      # Gleam 1.17 runs the project test runner as one unit; this named gate
+      # includes distributed_harness_test and its known-bad mutant corpus.
+      - run: sh scripts/with_ephemeral_mnesia.sh sh scripts/verify_distributed_harness.sh
 
   evidence:
     runs-on: ubuntu-latest
@@ -31,11 +78,13 @@ jobs:
           gleam-version: "1.17.0"
           otp-version: "27"
           rebar3-version: "3"
-      - run: gleam run -m vector_hnsw_benchmark
-      - run: gleam run -m bm25_benchmark
-      - run: gleam run -m graph_benchmark
-      - run: gleam run -m federation_benchmark
-      - run: gleam run -m temporal_diff_benchmark
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam run -m vector_hnsw_benchmark
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam run -m bm25_benchmark
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam run -m graph_benchmark
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam run -m federation_benchmark
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam run -m temporal_diff_benchmark
+      - run: AARONDB_SOAK_ITERATIONS=5 sh scripts/with_ephemeral_mnesia.sh sh scripts/verify_cluster_soak.sh
+      - run: sh scripts/with_ephemeral_mnesia.sh gleam test
 
   workflow-lint:
     runs-on: ubuntu-latest

@@ -1,4 +1,7 @@
-# GleamDB: A Mature Datalog Engine for the BEAM
+# Historical Design Notes: GleamDB
+
+> **Status: historical reference, not a product specification.** This document predates the v4.1.0 embedded/local boundary. Statements about SQLite, RocksDB, S3, distributed Erlang clustering, actor-per-entity execution, infinite traversal, hot upgrades, WAL recovery, and unbounded performance are exploratory ideas—not implemented or supported AaronDB behavior. For the current contract, use [Project Boundaries](../project_boundaries.md), [Feature Maturity](../feature_maturity.md), and [ADR 0002](../adr/0002-embedded-local-mcp-boundary.md).
+
 
 **Status**: REFERENCE
 **Priority**: P0

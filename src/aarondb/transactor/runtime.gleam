@@ -2,6 +2,7 @@ import aarondb/fact
 import aarondb/shared/state
 import aarondb/storage
 import aarondb/transactor/apply
+import aarondb/transactor/domain
 import gleam/erlang/process
 import gleam/list
 import gleam/option.{type Option}
@@ -13,15 +14,15 @@ pub fn do_handle_transact(
   valid_time: Option(Int),
   op: fact.Operation,
   reply: process.Subject(Result(state.DbState, String)),
-  compute_next_state: fn(
+  _compute_next_state: fn(
     state.DbState,
     List(fact.Fact),
     Option(Int),
     fact.Operation,
   ) -> Result(#(state.DbState, List(fact.Datom)), String),
 ) -> actor.Next(state.DbState, msg) {
-  case compute_next_state(state, facts, valid_time, op) {
-    Ok(#(final_state, datoms)) -> {
+  case domain.apply(state, domain.Transaction(facts, valid_time, op)) {
+    Ok(domain.Outcome(final_state, datoms)) -> {
       case storage.insert(final_state.adapter, datoms) {
         Ok(Nil) -> {
           let changed_attrs =

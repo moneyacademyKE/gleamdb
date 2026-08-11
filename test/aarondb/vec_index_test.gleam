@@ -204,3 +204,41 @@ pub fn delete_removes_a_result_from_a_subsequent_search_test() {
     list.any(results, fn(result) { result.entity == fact.EntityId(1) }),
   )
 }
+
+// --- Deterministic oracle tests ---
+
+pub fn exact_search_is_deterministic_and_breaks_ties_by_entity_id_test() {
+  let idx =
+    vec_index.new_with_config(vec_index.deterministic_config([0, 0, 0]))
+    |> vec_index.insert(fact.EntityId(3), [1.0, 0.0])
+    |> vec_index.insert(fact.EntityId(1), [1.0, 0.0])
+    |> vec_index.insert(fact.EntityId(2), [0.0, 1.0])
+
+  let assert Ok(results) = vec_index.exact_search(idx, [1.0, 0.0], -1.0, 3)
+  should.equal(list.map(results, fn(result) { result.entity }), [
+    fact.EntityId(1),
+    fact.EntityId(3),
+    fact.EntityId(2),
+  ])
+
+  let approximate = vec_index.search(idx, [1.0, 0.0], -1.0, 3)
+  should.equal(approximate, vec_index.search(idx, [1.0, 0.0], -1.0, 3))
+}
+
+pub fn exact_search_covers_empty_deleted_and_invalid_inputs_test() {
+  let empty = vec_index.new_with_config(vec_index.deterministic_config([]))
+  let assert Ok(empty_results) =
+    vec_index.exact_search(empty, [1.0, 0.0], -1.0, 1)
+  should.equal(empty_results, [])
+
+  let idx =
+    empty
+    |> vec_index.insert(fact.EntityId(1), [1.0, 0.0])
+    |> vec_index.delete(fact.EntityId(1))
+  let assert Ok(deleted_results) =
+    vec_index.exact_search(idx, [1.0, 0.0], -1.0, 1)
+  should.equal(deleted_results, [])
+
+  should.be_error(vec_index.exact_search(empty, [], -1.0, 1))
+  should.be_error(vec_index.exact_search(empty, [0.0, 0.0], -1.0, 1))
+}

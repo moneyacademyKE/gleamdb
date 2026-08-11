@@ -6,7 +6,7 @@ AaronDB is a local, embedded Datalog database for the BEAM. Its documented Stabl
 
 > "Simplicity is not about making things easy. It is about untangling complexity." — Rich Hickey
 
-> **Current release line:** v4.1.0 defines evidence-backed **local** Stable contracts for vector/HNSW, BM25, graph analytics, and federation. See [Feature Maturity](docs/feature_maturity.md) and [ADR 0002](docs/adr/0002-embedded-local-mcp-boundary.md).
+> **Current release line:** v4.2.0 certifies the `embedded-core-v1` structural closure: local Datalog domain models and deterministic algorithms with mechanically enforced pure-to-adapter boundaries. Sharding, distributed/HA, storage/transport, and MCP surfaces remain experimental; see [Feature Maturity](docs/feature_maturity.md), [Project Boundaries](docs/project_boundaries.md), and [the certification profile](docs/certification/embedded-core-v1.json).
 
 AaronDB is a BEAM-native temporal Datalog engine written in Gleam. Its strongest shape is a fact-oriented database core built around a transactor actor, immutable-style state transitions, in-memory indexes, and a custom query engine.
 
@@ -63,19 +63,19 @@ Add the current release to your `gleam.toml`:
 
 ```toml
 [dependencies]
-aarondb = "4.1.0"
+aarondb = "4.2"
 ```
 
-## What 4.1.0 Changes
+## What 4.2.0 Changes
 
-AaronDB 4.1.0 promotes four capabilities only within evidence-backed local boundaries:
+AaronDB 4.2.0 certifies `embedded-core-v1`: a deliberately bounded structural profile for local Datalog domain data and deterministic algorithms. The profile is executable: it rejects forbidden effectful imports, unapproved pure-module dependencies, malformed certification metadata, and generated/runtime artifacts.
 
-- **Vector/HNSW** — deterministic test configuration, exact cosine oracle, recall corpus, lifecycle churn regression, and reproducible local benchmark.
-- **BM25** — Analyzer v1, deterministic golden ranking/lifecycle tests, incremental-vs-rebuild evidence, and reproducible local benchmark.
-- **Graph** — directed semantics, canonical/budget regression coverage, bounded traversal/global APIs, and representative local fixture benchmarks.
-- **Federation** — per-source execution, deterministic provenance/order, typed fail-fast unavailable/timeout errors, no partial result leakage, and a local soak harness.
+- **Explicit failure boundaries** — `register_composite_with_timeout` and `store_rule_with_timeout` accept caller-owned deadlines. Existing convenience APIs remain compatibility wrappers with their historical five-second deadline.
+- **Pure transaction domain** — transaction transformation is separated from persistence and subscriber delivery; ordering and lookup failures have characterization tests.
+- **Deterministic vector evidence** — the exact local oracle, validation boundary, and tie ordering are independently testable from the approximate HNSW façade.
+- **State and continuation ownership** — state ownership is documented by concern, and retry/fallback/idempotency policy is explicit data rather than invisible control flow.
 
-The release does not turn AaronDB into a distributed system. See [CHANGELOG.md](CHANGELOG.md) for the full release notes.
+It does **not** promote sharding, Raft, HA, remote federation, storage/transport, MCP, lifecycle/upgrade/rollback, or broader cluster claims. Those surfaces remain experimental until their own candidate-SHA evidence profiles pass. See [CHANGELOG.md](CHANGELOG.md) for the full release notes.
 
 ## Basic Usage
 

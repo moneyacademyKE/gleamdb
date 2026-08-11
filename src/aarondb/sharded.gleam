@@ -3,6 +3,7 @@ import aarondb/algo/aggregate
 import aarondb/algo/bloom
 import aarondb/engine
 import aarondb/fact
+import aarondb/sharding/semantics
 import aarondb/shared/ast
 import aarondb/shared/query_types
 import aarondb/shared/state.{type DbState}
@@ -136,48 +137,47 @@ pub fn transact(
   db: query_types.ShardedDb(transactor.Db),
   facts: List(fact.Fact),
 ) -> Result(List(state.DbState), String) {
-  // Group facts by shard
-  let grouped =
-    list.fold(facts, dict.new(), fn(acc, f) {
-      let shard_id = get_shard_id_from_map(f.0, db.shard_map)
-      let shard_facts = dict.get(acc, shard_id) |> result.unwrap([])
-      dict.insert(acc, shard_id, [f, ..shard_facts])
-    })
-
-  let grouped_list = dict.to_list(grouped)
-  case grouped_list {
-    [] -> Ok([])
-    _ -> {
-      let self = process.new_subject()
-
-      // Scatter
-      list.each(grouped_list, fn(pair) {
-        let #(shard_id, shard_facts) = pair
-        process.spawn(fn() {
-          let assert Ok(shard_db) = dict.get(db.shards, shard_id)
-          let res = case transactor.transact(shard_db, shard_facts) {
-            Ok(state) -> Ok(state)
-            Error(e) ->
-              Error(
-                "Shard "
-                <> string.inspect(shard_id)
-                <> " transact failed: "
-                <> e,
-              )
-          }
-          process.send(self, res)
-        })
-      })
-
-      // Gather
-      list.fold(range(1, list.length(grouped_list)), [], fn(acc, _) {
-        let res = case process.receive(self, 15_000) {
-          Ok(res) -> res
-          Error(_) -> Error("Timeout waiting for shard")
+  case
+    semantics.group_facts(
+      facts,
+      db.shard_map.vnodes,
+      db.shard_map.sorted_hashes,
+    )
+  {
+    Error(error) -> Error(error)
+    Ok(grouped) -> {
+      let grouped_list = dict.to_list(grouped)
+      case grouped_list {
+        [] -> Ok([])
+        _ -> {
+          let self = process.new_subject()
+          list.each(grouped_list, fn(pair) {
+            let #(shard_id, shard_facts) = pair
+            process.spawn(fn() {
+              let assert Ok(shard_db) = dict.get(db.shards, shard_id)
+              let res = case transactor.transact(shard_db, shard_facts) {
+                Ok(state) -> Ok(state)
+                Error(e) ->
+                  Error(
+                    "Shard "
+                    <> string.inspect(shard_id)
+                    <> " transact failed: "
+                    <> e,
+                  )
+              }
+              process.send(self, res)
+            })
+          })
+          list.fold(range(1, list.length(grouped_list)), [], fn(acc, _) {
+            let res = case process.receive(self, 15_000) {
+              Ok(res) -> res
+              Error(_) -> Error("Timeout waiting for shard")
+            }
+            [res, ..acc]
+          })
+          |> list.try_map(fn(x) { x })
         }
-        [res, ..acc]
-      })
-      |> list.try_map(fn(x) { x })
+      }
     }
   }
 }

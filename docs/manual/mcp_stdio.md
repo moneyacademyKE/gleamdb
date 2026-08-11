@@ -30,6 +30,14 @@ This gives local hosts a simple backpressure contract: a slow tool call blocks f
 
 JSON-RPC requests with an `id` receive one response. Notifications omit `id` and receive no stdout response, including `notifications/initialized` and `notifications/cancelled`. This preserves stdout as a protocol-only stream.
 
+## CI conformance evidence
+
+`sh scripts/mcp_stdio_conformance.sh` launches the real stdio child process and
+feeds a representative host lifecycle: `initialize`, `notifications/initialized`,
+`tools/list`, malformed JSON, an unsupported method, and EOF shutdown. It
+asserts that stdout contains only four parseable JSON-RPC responses and stderr
+contains the startup diagnostic. CI runs this harness in the `evidence` job.
+
 ## Protocol support
 
 - `initialize`

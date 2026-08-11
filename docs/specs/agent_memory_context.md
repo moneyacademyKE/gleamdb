@@ -1,4 +1,7 @@
-# PRD: Agent Memory Context (Graph RAG Macros) 🧙🏾‍♂️
+# Historical PRD: Agent Memory Context (Graph RAG Macros)
+
+> **Status: historical design input, not current API documentation.** The current supported RAG surface is `aarondb/rag.build_query/1`, consumed by the local MCP `recall` tool. There is no `rag.semantic_search` public API and no MCP `semantic_search` endpoint. See [RAG status](../feature_maturity.md#legacy-and-inactive-surfaces) and [Local MCP stdio](../manual/mcp_stdio.md).
+
 
 **Role:** Lead Product Manager
 **Persona:** Rich Hickey (Focus on declarative data and functional composition over novel stateful engines)

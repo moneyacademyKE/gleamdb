@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "profile": "upgrade-rollback-v1",
+  "version": 1,
+  "status": "evidence-required",
+  "assumptions": {
+    "topology": "Three independently addressable mTLS nodes, one node per host, using a strict topology manifest shared with the independent-host LAN profile.",
+    "compatibility_window": "A named N/N-1 pair; unsupported version pairs must be refused before mutation.",
+    "workflow": "Rolling one-node-at-a-time upgrade, leader movement, identity rotation, rollback, and verified restore through public operator tooling."
+  },
+  "required_evidence": [
+    "clean immutable source commit matching the validator checkout",
+    "topology manifest SHA-256 and three distinct a/b/c host identities",
+    "from/to version manifest and step transcript",
+    "equal committed-state hashes before, after upgrade, and after rollback",
+    "redacted public operator command outcomes",
+    "leader-movement, identity-rotation, and rollback alarms",
+    "unsupported version-pair refusal and verified restore"
+  ],
+  "non_claims": [
+    "This profile does not prove arbitrary version compatibility.",
+    "Same-host lifecycle drills are not independent-host upgrade evidence.",
+    "This profile does not replace power-loss or WAN impairment proof."
+  ]
+}

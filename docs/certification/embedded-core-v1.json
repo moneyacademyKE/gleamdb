@@ -1,0 +1,55 @@
+{
+  "profile": "embedded-core-v1",
+  "status": "structural-certification-target",
+  "scope": "Embedded local Datalog domain models and deterministic optional algorithms.",
+  "excluded_surfaces": [
+    "actor runtime",
+    "storage",
+    "FFI",
+    "transport",
+    "distributed and cluster runtime",
+    "MCP",
+    "compatibility APIs"
+  ],
+  "pure_modules": [
+    "src/aarondb/fact.gleam",
+    "src/aarondb/shared/ast.gleam",
+    "src/aarondb/shared/columnar.gleam",
+    "src/aarondb/shared/optimizer.gleam",
+    "src/aarondb/q.gleam",
+    "src/aarondb/command.gleam",
+    "src/aarondb/raft_runtime.gleam",
+    "src/aarondb/vec_index.gleam",
+    "src/aarondb/vec_index/exact.gleam",
+    "src/aarondb/vec_index/validation.gleam",
+    "src/aarondb/vector.gleam"
+  ],
+  "required_tests": [
+    "test/aarondb/fact_test.gleam",
+    "test/aarondb/q_test.gleam",
+    "test/aarondb/command_test.gleam",
+    "test/aarondb/raft_runtime_test.gleam",
+    "test/aarondb/vec_index_test.gleam",
+    "test/aarondb/hnsw_test.gleam"
+  ],
+  "approved_runtime_adapters": [
+    "src/aarondb/transactor.gleam",
+    "src/aarondb/transactor/",
+    "src/aarondb/storage.gleam",
+    "src/aarondb/storage/",
+    "src/aarondb/cluster_runtime.gleam",
+    "src/aarondb/cluster_transport.gleam"
+  ],
+  "default_api_policy": "New certified-core APIs return explicit Result values for failure and accept explicit bounds or deadlines where a runtime boundary exists. Assertion-based or implicit-deadline functions are compatibility APIs and are excluded from this profile.",
+  "forbidden_import_prefixes": [
+    "gleam/erlang/process",
+    "gleam/otp",
+    "aarondb/storage",
+    "aarondb/transactor",
+    "aarondb/cluster_",
+    "aarondb/distributed_",
+    "aarondb/mcp/"
+  ],
+  "verification": "sh scripts/verify_embedded_core_v1.sh",
+  "certification_rule": "A 10/10 verdict is permitted only when this command passes and the architecture documentation, test closure, and public API boundary describe the actual code."
+}

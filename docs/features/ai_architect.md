@@ -1,8 +1,8 @@
-# AI Site Architect: Generative Content Architecture
+# Historical: AI Site Architect / GleamCMS
 
-> **Maturity: Experimental.** GleamCMS and the AI Architect are product layers built on top of AaronDB, not part of the core database contract. See `docs/feature_maturity.md`.
+> **Status: removed in v3.0.0.** AaronDB no longer contains GleamCMS, an HTTP server, a site renderer, the `/api/ai/design` endpoint, or an AI Site Architect runtime. This page is retained solely as historical product context; it is not implementation documentation and must not be used as an integration guide. The supported product boundary is the embedded database and local stdio MCP described in [Project Boundaries](../project_boundaries.md).
 
-The **AI Site Architect** (introduced in v2.2.0) evolves GleamCMS from a static theme generator into a structural site composer. It enables autonomous agents and users to generate full landing pages with logical flow, premium layouts, and high-end visual flourishes.
+## Historical description
 
 ## 🧬 Principles
 

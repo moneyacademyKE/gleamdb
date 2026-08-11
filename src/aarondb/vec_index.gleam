@@ -1,4 +1,6 @@
 import aarondb/fact
+import aarondb/vec_index/exact
+import aarondb/vec_index/validation
 import aarondb/vector
 import gleam/dict.{type Dict}
 import gleam/float
@@ -154,7 +156,7 @@ pub fn try_insert(
 }
 
 fn valid_vector(vec: List(Float)) -> Bool {
-  vector.dimensions(vec) > 0 && vector.magnitude(vec) != 0.0
+  validation.vector_is_valid(vec)
 }
 
 /// Greedy-links the new node to its nearest existing neighbors across multiple levels.
@@ -340,18 +342,10 @@ pub fn exact_search(
       case idx.dimensions {
         Some(expected) if expected != dimensions -> Error(Nil)
         _ -> {
-          let query = vector.normalize(query)
-          idx.nodes
-          |> dict.to_list()
-          |> list.map(fn(entry) {
-            SearchResult(
-              entity: entry.0,
-              score: vector.dot_product(query, entry.1),
-            )
+          exact.search(idx.nodes, query, threshold, k)
+          |> list.map(fn(result) {
+            SearchResult(entity: result.0, score: result.1)
           })
-          |> list.filter(fn(result) { result.score >=. threshold })
-          |> list.sort(compare_search_results)
-          |> list.take(k)
           |> Ok
         }
       }
@@ -366,6 +360,7 @@ fn compare_search_results(a: SearchResult, b: SearchResult) -> order.Order {
   }
 }
 
+/// Search using the HNSW approximation, returning an empty list for invalid input.
 pub fn search(
   idx: VecIndex,
   query: List(Float),
@@ -401,7 +396,7 @@ pub fn try_search(
 }
 
 fn valid_query(query: List(Float), threshold: Float, k: Int) -> Bool {
-  valid_vector(query) && threshold >=. -1.0 && threshold <=. 1.0 && k > 0
+  validation.query_is_valid(query, threshold, k)
 }
 
 /// Uses hierarchical greedy beam search.
